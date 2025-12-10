@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-md mx-auto px-4 py-12">
+  <div class="text-center space-y-2">
+    <p class="text-xs uppercase tracking-[0.3em] text-brand-500">Shining Brows</p>
+    <h1 class="text-3xl font-bold text-slate-900">Öğrenci Girişi</h1>
+    <p class="text-slate-600 text-sm">Uzman özel paneli</p>
+  </div>
+  <div class="mt-8 bg-white/90 border border-brand-100 shadow-xl rounded-2xl p-6 space-y-6 backdrop-blur">
+    <form method="post" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium mb-2 text-slate-700">Ad Soyad</label>
+        <input name="full_name" value="{{ request.form.full_name or '' }}" required placeholder="Örn: Ayşe Yılmaz"
+               class="w-full rounded-xl bg-white border border-brand-100 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
+      </div>
+      <div id="password-block" class="space-y-2 {% if not show_password %}hidden{% endif %}">
+        <label class="block text-sm font-medium mb-2 text-slate-700">Şifre</label>
+        <input name="password" type="password" placeholder="Şifreniz"
+               class="w-full rounded-xl bg-white border border-brand-100 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
+        <p class="text-xs text-slate-500">Bu kullanıcı için şifre tanımlı.</p>
+      </div>
+      <button type="submit" class="w-full py-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold shadow-md">
+        Giriş Yap
+      </button>
+    </form>
+    {% if error %}
+      <div class="text-sm text-rose-500">{{ error }}</div>
+    {% endif %}
+    <div class="text-xs text-slate-500">
+      Girişler mezun listesi ile doğrulanmaktadır. Sorun yaşıyorsanız Master ekibi ile iletişime geçin.
+    </div>
+  </div>
+</div>
+
+<script>
+  (() => {
+    const nameInput = document.querySelector('input[name="full_name"]');
+    const passwordBlock = document.getElementById("password-block");
+    if (!nameInput || !passwordBlock) return;
+    const check = async () => {
+      const name = nameInput.value.trim();
+      if (!name) {
+        passwordBlock.classList.add("hidden");
+        return;
+      }
+      try {
+        const res = await fetch(`/api/auth/check?full_name=${encodeURIComponent(name)}`);
+        const data = await res.json();
+        if (data.requires_password) {
+          passwordBlock.classList.remove("hidden");
+        } else {
+          passwordBlock.classList.add("hidden");
+        }
+      } catch (e) {
+        // ignore errors, keep default behavior
+      }
+    };
+    nameInput.addEventListener("blur", check);
+    nameInput.addEventListener("input", () => {
+      if (!nameInput.value.trim()) passwordBlock.classList.add("hidden");
+    });
+  })();
+</script>
+{% endblock %}

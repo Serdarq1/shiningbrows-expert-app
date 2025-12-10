@@ -1,0 +1,20 @@
+{
+  "name": "Shining Brows Öğrenci",
+  "short_name": "Shining Brows",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffe4e6",
+  "theme_color": "#ec4899",
+  "icons": [
+    {
+      "src": "/static/img/sb-logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/img/sb-logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
