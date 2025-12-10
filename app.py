@@ -50,18 +50,21 @@ def fetch_table(table: str, filters: Optional[Dict[str, Any]] = None) -> List[Di
     """
     Fetch data from Supabase
     """
-    # Supabase path
-    if supabase:
-        try:
-            query = supabase.table(table).select("*")
-            if filters is not None:
-                for key, value in filters.items():
-                    query = query.eq(key, value)
-            response = query.execute()
-            if hasattr(response, "data"):
-                return response.data or []
-        except Exception as exc:
-            print(f"Supabase fetch exception for {table}: {exc}")
+    if not supabase:
+        return []
+
+    try:
+        query = supabase.table(table).select("*")
+        if filters is not None:
+            for key, value in filters.items():
+                query = query.eq(key, value)
+        response = query.execute()
+        if hasattr(response, "data"):
+            return response.data or []
+    except Exception as exc:
+        print(f"Supabase fetch exception for {table}: {exc}")
+
+    return []
 
 
 def fetch_student_by_name(full_name: str) -> Optional[Dict[str, Any]]:
