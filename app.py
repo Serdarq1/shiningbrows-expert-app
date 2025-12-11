@@ -37,8 +37,12 @@ ELEVATED_ROLES = {"master", "admin"}
 
 supabase: Optional[Client] = None
 if SUPABASE_URL and SUPABASE_KEY and create_client:
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    print("Supabase client created")
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print("Supabase client created")
+    except Exception as exc:
+        supabase = None
+        print("Supabase client could not be created.", exc)
 else:
     print("Supabase config missing or supabase-py not installed")
 
