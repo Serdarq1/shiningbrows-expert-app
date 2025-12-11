@@ -18,6 +18,20 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
     from supabase import Client, create_client
+    try:
+        # Some supabase-py versions don't accept http_client; patch to ignore it if present.
+        import inspect
+        from supabase.lib.client_options import ClientOptions as _ClientOptions
+
+        if "http_client" not in inspect.signature(_ClientOptions.__init__).parameters:
+            _orig_init = _ClientOptions.__init__
+
+            def _patched_init(self, *args, http_client=None, **kwargs):  # type: ignore[override]
+                return _orig_init(self, *args, **kwargs)
+
+            _ClientOptions.__init__ = _patched_init  # type: ignore[assignment]
+    except Exception:
+        pass
 except ImportError:
     Client = None
     create_client = None
