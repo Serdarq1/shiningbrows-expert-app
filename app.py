@@ -34,6 +34,8 @@ SUPABASE_BOOK_BUCKET = os.getenv("SUPABASE_BOOK_BUCKET", "books")
 ALLOWED_REACTIONS = {"like", "love", "wow", "clap"}
 ELEVATED_ROLES = {"master", "admin"}
 
+print(SUPABASE_KEY)
+
 supabase: Optional[Client] = None
 if SUPABASE_URL and SUPABASE_KEY and create_client:
     try:
@@ -51,6 +53,7 @@ def fetch_table(table: str, filters: Optional[Dict[str, Any]] = None) -> List[Di
     Fetch data from Supabase
     """
     if not supabase:
+        print(response.status_code)
         return []
 
     try:
