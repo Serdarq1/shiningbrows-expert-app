@@ -34,7 +34,6 @@ SUPABASE_BOOK_BUCKET = os.getenv("SUPABASE_BOOK_BUCKET", "books")
 ALLOWED_REACTIONS = {"like", "love", "wow", "clap"}
 ELEVATED_ROLES = {"master", "admin"}
 
-print(SUPABASE_KEY)
 
 supabase: Optional[Client] = None
 if SUPABASE_URL and SUPABASE_KEY and create_client:

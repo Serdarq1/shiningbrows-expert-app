@@ -1,4 +1,9 @@
 flask==3.0.2
 python-dotenv==1.0.1
-supabase==2.4.0
 gunicorn==23.0.0
+supabase==2.4.0
+postgrest==0.16.9
+gotrue==2.7.0
+realtime==2.0.4
+storage3==0.8.0
+httpx<0.28
