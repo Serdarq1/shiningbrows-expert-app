@@ -40,8 +40,10 @@ supabase: Optional[Client] = None
 if SUPABASE_URL and SUPABASE_KEY and create_client:
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print("Supabase client created")
     except Exception as exc:
         supabase = None
+        print("Supabase client could not be created.")
 else:
     print("Supabase config missing or supabase-py not installed")
 
@@ -53,7 +55,7 @@ def fetch_table(table: str, filters: Optional[Dict[str, Any]] = None) -> List[Di
     Fetch data from Supabase
     """
     if not supabase:
-        raise RuntimeError("Supabase client is not created.")
+        return []
 
     try:
         query = supabase.table(table).select("*")
@@ -62,12 +64,6 @@ def fetch_table(table: str, filters: Optional[Dict[str, Any]] = None) -> List[Di
                 query = query.eq(key, value)
         response = query.execute()
         if hasattr(response, "data"):
-            print(
-                f"Supabase fetch empty for {table} | "
-                f"status={getattr(response, 'status_code', '?')} "
-                f"error={getattr(response, 'error', None)} "
-                f"count={getattr(response, 'count', None)}"
-            )
             return response.data or []
     except Exception as exc:
         print(f"Supabase fetch exception for {table}: {exc}")
