@@ -31,6 +31,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "Images")
 SUPABASE_BOOK_BUCKET = os.getenv("SUPABASE_BOOK_BUCKET", "books")
+SUPABASE_TRUST_ENV = (os.getenv("SUPABASE_TRUST_ENV", "true").lower() in ("1", "true", "yes"))
 ALLOWED_REACTIONS = {"like", "love", "wow", "clap"}
 ELEVATED_ROLES = {"master", "admin"}
 
@@ -38,7 +39,26 @@ ELEVATED_ROLES = {"master", "admin"}
 supabase: Optional[Client] = None
 if SUPABASE_URL and SUPABASE_KEY and create_client:
     try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        # Disable proxy usage for Supabase if desired (common cause of proxy errors).
+        http_client = None
+        try:
+            import httpx
+
+            http_client = httpx.Client(trust_env=SUPABASE_TRUST_ENV, timeout=30)
+        except Exception as httpx_err:
+            # httpx is an optional dep of supabase-py; if unavailable we fall back to defaults.
+            print("httpx client could not be configured, falling back to default:", httpx_err)
+
+        if http_client:
+            from supabase import ClientOptions
+
+            supabase = create_client(
+                SUPABASE_URL,
+                SUPABASE_KEY,
+                options=ClientOptions(http_client=http_client),
+            )
+        else:
+            supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         print("Supabase client created")
     except Exception as exc:
         supabase = None
