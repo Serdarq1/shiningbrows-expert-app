@@ -22,6 +22,7 @@ try:
         # Some supabase-py versions don't accept http_client; patch to ignore it if present.
         import inspect
         from supabase.lib.client_options import ClientOptions as _ClientOptions
+        from supabase.client import Client as _SupabaseClient
 
         if "http_client" not in inspect.signature(_ClientOptions.__init__).parameters:
             _orig_init = _ClientOptions.__init__
@@ -30,6 +31,15 @@ try:
                 return _orig_init(self, *args, **kwargs)
 
             _ClientOptions.__init__ = _patched_init  # type: ignore[assignment]
+
+        # Some versions of Client do not accept proxy; patch to ignore it if missing.
+        if "proxy" not in inspect.signature(_SupabaseClient.__init__).parameters:
+            _orig_client_init = _SupabaseClient.__init__
+
+            def _patched_client_init(self, *args, proxy=None, **kwargs):  # type: ignore[override]
+                return _orig_client_init(self, *args, **kwargs)
+
+            _SupabaseClient.__init__ = _patched_client_init  # type: ignore[assignment]
     except Exception:
         pass
 except ImportError:
