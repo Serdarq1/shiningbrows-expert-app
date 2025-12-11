@@ -40,33 +40,11 @@ supabase: Optional[Client] = None
 if SUPABASE_URL and SUPABASE_KEY and create_client:
     try:
         # Disable proxy usage for Supabase if desired (common cause of proxy errors).
-        os.environ["HTTPX_TRUST_ENV"] = "1" if SUPABASE_TRUST_ENV else "0"
-        http_client = None
-        try:
-            import httpx
-            import inspect
-
-            http_client = httpx.Client(trust_env=SUPABASE_TRUST_ENV, timeout=30)
-        except Exception as httpx_err:
-            # httpx is an optional dep of supabase-py; if unavailable we fall back to defaults.
-            print("httpx client could not be configured, falling back to default:", httpx_err)
-
-        supabase = None
-        if http_client:
-            from supabase import ClientOptions
-
-            # Older supabase-py versions (<2.5) do not accept http_client; detect support.
-            has_http_client_param = "http_client" in inspect.signature(ClientOptions.__init__).parameters
-            if has_http_client_param:
-                supabase = create_client(
-                    SUPABASE_URL,
-                    SUPABASE_KEY,
-                    options=ClientOptions(http_client=http_client),
-                )
-            else:
-                supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-        else:
-            supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        if not SUPABASE_TRUST_ENV:
+            for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+                if key in os.environ:
+                    os.environ.pop(key, None)
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         print("Supabase client created")
     except Exception as exc:
         supabase = None
