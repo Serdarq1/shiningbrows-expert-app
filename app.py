@@ -64,10 +64,6 @@ supabase: Optional[Client] = None
 if SUPABASE_URL and SUPABASE_KEY and create_client:
     try:
         # Disable proxy usage for Supabase if desired (common cause of proxy errors).
-        if not SUPABASE_TRUST_ENV:
-            for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
-                if key in os.environ:
-                    os.environ.pop(key, None)
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         print("Supabase client created")
     except Exception as exc:
