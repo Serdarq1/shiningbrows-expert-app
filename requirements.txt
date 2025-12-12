@@ -2,3 +2,5 @@ flask==3.0.2
 python-dotenv==1.0.1
 gunicorn==23.0.0
 supabase==2.8.1
+pillow==10.3.0
+pillow-heif==0.16.0

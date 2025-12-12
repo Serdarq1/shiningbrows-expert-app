@@ -544,18 +544,33 @@ function setupSupportForm() {
   });
 }
 
+function spinner({ size = 32 } = {}) {
+  const stroke = Math.max(2, Math.floor(size / 8));
+  return `
+    <div class="flex justify-center py-8" aria-live="polite" aria-busy="true">
+      <div
+        class="rounded-full border-solid border-slate-200 border-t-brand-500 animate-spin"
+        style="width:${size}px;height:${size}px;border-width:${stroke}px"
+      ></div>
+    </div>
+  `;
+}
+
 function setupPhotoForm() {
   const form = document.getElementById("photo-form");
   if (!form) return;
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const formData = new FormData(form);
+    const gallery = document.getElementById("photo-gallery");
+    if (gallery) gallery.innerHTML = spinner();
     try {
       await fetchJSON("/api/photos", { method: "POST", body: formData });
       form.reset();
       loadPhotos();
     } catch (err) {
       alert("Fotoğraf yüklenemedi.");
+      loadPhotos();
     }
   });
 }
@@ -563,9 +578,14 @@ function setupPhotoForm() {
 async function loadPhotos() {
   const gallery = document.getElementById("photo-gallery");
   if (!gallery) return;
-  gallery.innerHTML = "";
+  gallery.innerHTML = spinner();
   try {
     const photos = await fetchJSON("/api/photos");
+    if (!photos.length) {
+      gallery.innerHTML = '<p class="text-sm text-slate-600 text-center py-4">Henüz fotoğraf yok.</p>';
+      return;
+    }
+    gallery.innerHTML = "";
     photos.forEach((photo) => {
       const card = document.createElement("div");
       card.className = "relative rounded-xl overflow-hidden border border-brand-100 shadow-sm bg-white";
@@ -586,16 +606,18 @@ async function loadPhotos() {
     });
   } catch (err) {
     console.error(err);
+    gallery.innerHTML = '<p class="text-sm text-red-500 text-center py-4">Fotoğraflar yüklenemedi.</p>';
   }
 }
 
 async function loadFeed() {
+  const feed = document.getElementById("feed-gallery");
+  if (feed) feed.innerHTML = spinner({ size: 40 });
   try {
     feedPhotos = await fetchJSON("/api/photos/feed");
     renderFeed();
   } catch (err) {
     console.error(err);
-    const feed = document.getElementById("feed-gallery");
     if (feed) {
       feed.innerHTML = '<p class="text-sm text-red-500">Akış yüklenemedi.</p>';
     }

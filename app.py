@@ -1,3 +1,4 @@
+import io
 import os
 import uuid
 from datetime import UTC, datetime
@@ -94,6 +95,83 @@ def fetch_table(table: str, filters: Optional[Dict[str, Any]] = None) -> List[Di
         print(f"Supabase fetch exception for {table}: {exc}")
 
     return []
+
+
+def build_image_url(path: str) -> Optional[str]:
+    """Return a browser-friendly URL for a stored image.
+
+    Handles both absolute URLs already stored in the DB and bucket-relative
+    paths by generating a signed URL (default 7 days) when needed. Falls back
+    to a public URL if signing fails.
+    """
+    if not path:
+        return None
+    if path.startswith("http://") or path.startswith("https://"):
+        return path
+    if not supabase:
+        return None
+    try:
+        resp = supabase.storage.from_(SUPABASE_BUCKET).create_signed_url(path, 60 * 60 * 24 * 7)
+        if isinstance(resp, dict):
+            url = resp.get("signedURL") or resp.get("signedUrl") or resp.get("signed_url")
+            if not url and isinstance(resp.get("data"), dict):
+                data = resp.get("data")
+                url = data.get("signedURL") or data.get("signedUrl") or data.get("signed_url")
+        else:
+            data = getattr(resp, "data", None)
+            url = (
+                getattr(resp, "signedURL", None)
+                or getattr(resp, "signedUrl", None)
+                or getattr(resp, "signed_url", None)
+                or (data.get("signedURL") if isinstance(data, dict) else None)
+                or (data.get("signedUrl") if isinstance(data, dict) else None)
+                or (data.get("signed_url") if isinstance(data, dict) else None)
+            )
+        if url:
+            return url
+    except Exception as exc:
+        print("Signed URL generation failed:", exc)
+
+    try:
+        public = supabase.storage.from_(SUPABASE_BUCKET).get_public_url(path)
+        if public:
+            return public
+    except Exception as exc:
+        print("Public URL fallback failed:", exc)
+
+    return None
+
+
+def convert_image_if_needed(file_bytes: bytes, mimetype: str, extension: str):
+    """Convert HEIC/HEIF images to JPEG for browser compatibility.
+
+    Returns a tuple of (bytes, mimetype, extension). If conversion fails,
+    the original values are returned.
+    """
+    ext_lower = (extension or "").lower()
+    mime_lower = (mimetype or "").lower()
+    is_heic = ext_lower in {".heic", ".heif"} or mime_lower in {
+        "image/heic",
+        "image/heif",
+        "image/heic-sequence",
+        "image/heif-sequence",
+    }
+    if not is_heic:
+        return file_bytes, mimetype, extension or ".jpg"
+
+    try:
+        from pillow_heif import register_heif_opener
+        from PIL import Image
+
+        register_heif_opener()
+        img = Image.open(io.BytesIO(file_bytes))
+        output = io.BytesIO()
+        img.convert("RGB").save(output, format="JPEG", quality=90)
+        output.seek(0)
+        return output.read(), "image/jpeg", ".jpg"
+    except Exception as exc:
+        print("HEIC conversion failed, using original bytes:", exc)
+        return file_bytes, mimetype, extension or ".jpg"
 
 
 def fetch_student_by_name(full_name: str) -> Optional[Dict[str, Any]]:
@@ -283,7 +361,7 @@ def api_books_upload() -> Any:
         supabase.storage.from_(SUPABASE_BOOK_BUCKET).upload(
             path=storage_key,
             file=file_bytes,
-            file_options={"content-type": "application/pdf", "upsert": False},
+            file_options={"content-type": "application/pdf", "upsert": "false"},
         )
         file_url = supabase.storage.from_(SUPABASE_BOOK_BUCKET).get_public_url(storage_key)
     except Exception as exc:
@@ -314,6 +392,10 @@ def api_photos_get() -> Any:
         return jsonify({"error": "Oturum bulunamadı"}), 401
 
     photos = fetch_table("photos", {"student_id": student["id"]})
+    for p in photos:
+        url = build_image_url(p.get("image_url", ""))
+        if url:
+            p["image_url"] = url
     return jsonify(photos)
 
 
@@ -333,30 +415,32 @@ def api_photos_post() -> Any:
 
     filename = photo.filename or ""
     extension = os.path.splitext(filename)[1] or ".jpg"
-    storage_key = f"{student['id']}/{uuid.uuid4().hex}{extension}"
-
     mimetype = photo.mimetype or "application/octet-stream"
-    if not mimetype.startswith("image/"):
+    if not mimetype.startswith("image/") and extension.lower() not in {".heic", ".heif"}:
         return jsonify({"error": "Lütfen geçerli bir resim dosyası yükleyin."}), 400
 
     file_bytes = photo.read()
     if not file_bytes:
         return jsonify({"error": "Dosya boş görünüyor."}), 400
 
+    file_bytes, mimetype, extension = convert_image_if_needed(file_bytes, mimetype, extension)
+    storage_key = f"{student['id']}/{uuid.uuid4().hex}{extension}"
+
     try:
+        # Ensure header values are strings; some http clients choke on bool values.
         supabase.storage.from_(SUPABASE_BUCKET).upload(
             path=storage_key,
             file=file_bytes,
-            file_options={"content-type": mimetype, "upsert": False},
+            file_options={"content-type": mimetype, "upsert": "false"},
         )
-        image_url = supabase.storage.from_(SUPABASE_BUCKET).get_public_url(storage_key)
+        image_url = build_image_url(storage_key) or storage_key
     except Exception as exc:
         print("Photo upload failed:", exc)
         return jsonify({"error": f"Yükleme başarısız: {exc}"}), 500
 
     record = {
         "student_id": student["id"],
-        "image_url": image_url,
+        "image_url": storage_key,
         "feedback": None,
         "is_monthly_winner": False,
         "created_at": datetime.now(UTC).isoformat(),
@@ -372,7 +456,9 @@ def api_photos_post() -> Any:
             return jsonify({"error": f"Veritabanı kaydı başarısız: {exc}"}), 500
     else:
         return jsonify({"error": "Supabase bağlantı hatası."})
-    return jsonify(record), 201
+    response_record = dict(record)
+    response_record["image_url"] = image_url
+    return jsonify(response_record), 201
 
 
 @app.route("/api/photos/feed", methods=["GET"])
@@ -468,6 +554,9 @@ def api_photos_feed() -> Any:
                 fb_student_id = fb.get("student_id")
                 fb["student_name"] = names.get(fb_student_id, "Uzman")
             photo["feedbacks"] = photo_feedbacks
+            url = build_image_url(photo.get("image_url", ""))
+            if url:
+                photo["image_url"] = url
     except Exception as exc:
         print("Student lookup failed:", exc)
 
