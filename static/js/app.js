@@ -187,17 +187,45 @@ function refreshWorkshopAdminVisibility() {
   if (bookCard) bookCard.classList.toggle("hidden", !canEdit);
 }
 
+function formatTextWithLineBreaks(text) {
+  if (!text) return "";
+  return String(text)
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{2,}/g, "<br><br>")
+    .replace(/\n/g, "<br>");
+}
+
+function toBulletItems(input) {
+  if (!input) return [];
+  const rawItems = Array.isArray(input) ? input : [input];
+  const items = [];
+  rawItems.forEach((entry) => {
+    if (!entry) return;
+    const normalized = String(entry).replace(/\r\n/g, "\n");
+    const byLine = normalized.split("\n").map((line) => line.trim()).filter(Boolean);
+    if (byLine.length === 1 && byLine[0].includes("•")) {
+      byLine[0]
+        .split("•")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .forEach((item) => items.push(item));
+    } else {
+      byLine.forEach((line) => {
+        const cleaned = line.replace(/^•\s*/, "").trim();
+        if (cleaned) items.push(cleaned);
+      });
+    }
+  });
+  return items;
+}
+
 async function loadProducts() {
   const container = document.getElementById("product-list");
   if (!container) return;
   container.innerHTML = "";
   const products = await fetchJSON("/api/products");
   products.forEach((product) => {
-    const steps = Array.isArray(product.steps)
-      ? product.steps
-      : typeof product.steps === "string"
-        ? product.steps.split("\n").filter(Boolean)
-        : [];
+    const steps = toBulletItems(product.steps);
     const card = document.createElement("div");
     card.className = "rounded-xl border border-brand-100 bg-white p-3 space-y-2 shadow-sm";
     card.innerHTML = `
@@ -206,7 +234,11 @@ async function loadProducts() {
         <span class="text-xs text-slate-500">${product.short_description || ""}</span>
       </div>
       <div class="space-y-1 text-sm">
-        ${steps.map((step) => `<p class="text-slate-600">${step}</p>`).join("")}
+        ${
+          steps.length
+            ? `<p class="text-slate-600">${steps.map((step) => `• ${step}`).join("<br>")}</p>`
+            : ""
+        }
       </div>
     `;
     container.appendChild(card);
@@ -272,10 +304,31 @@ async function loadEducation() {
     aftercare: [],
     kontrendikasyon: [],
   };
+  const normalizeEducationCategory = (value) => {
+    if (!value) return "";
+    const raw = String(value).toLowerCase().trim();
+    const normalized = raw
+      .replace(/[ı]/g, "i")
+      .replace(/[ş]/g, "s")
+      .replace(/[ğ]/g, "g")
+      .replace(/[ü]/g, "u")
+      .replace(/[ö]/g, "o")
+      .replace(/[ç]/g, "c")
+      .replace(/[^a-z0-9]+/g, " ");
+    if (normalized.includes("uyari") || normalized.includes("warning")) return "uyari";
+    if (normalized.includes("aftercare") || normalized.includes("bakim") || normalized.includes("sonrasi")) return "aftercare";
+    if (normalized.includes("kontrendikasyon") || normalized.includes("kontra")) return "kontrendikasyon";
+    if (normalized.includes("kullanim") || normalized.includes("kullan")) return "kullanim";
+    return normalized.replace(/\s+/g, "");
+  };
   if (Array.isArray(data)) {
     data.forEach((item) => {
-      const cat = (item.category || "").toLowerCase();
-      if (grouped[cat]) grouped[cat].push(item);
+      const cat = normalizeEducationCategory(item.category);
+      if (grouped[cat]) {
+        grouped[cat].push(item);
+      } else {
+        grouped.uyari.push(item);
+      }
     });
   } else if (data && typeof data === "object") {
     grouped.kullanim = data.kullanim || [];
@@ -288,10 +341,10 @@ async function loadEducation() {
     const el = document.getElementById(id);
     if (el) el.innerHTML = "";
   });
-  renderEducationGroup("education-kullanim", grouped.kullanim, "Ürün Kullanımı");
-  renderEducationGroup("education-uyari", grouped.uyari, "Uyarılar");
-  renderEducationGroup("education-aftercare", grouped.aftercare, "Aftercare");
-  renderEducationGroup("education-kontrendikasyon", grouped.kontrendikasyon, "Kontrendikasyonlar");
+  renderEducationGroup("education-kullanim", grouped.kullanim, );
+  renderEducationGroup("education-uyari", grouped.uyari);
+  renderEducationGroup("education-aftercare", grouped.aftercare);
+  renderEducationGroup("education-kontrendikasyon", grouped.kontrendikasyon);
 }
 
 function renderEducationGroup(containerId, items = [], title) {
@@ -307,7 +360,7 @@ function renderEducationGroup(containerId, items = [], title) {
     row.className = "p-3 rounded-xl bg-white border border-brand-100 text-sm space-y-1 shadow-sm";
     row.innerHTML = `
       <p class="font-semibold">${item.title}</p>
-      <p class="text-slate-600">${item.content}</p>
+      <p class="text-slate-600">${formatTextWithLineBreaks(item.content)}</p>
     `;
     container.appendChild(row);
   });

@@ -832,11 +832,12 @@ def education():
                 "content": content,
                 "category": category,
             }
-            response = supabase.table("education_content").insert(record).execute()
+            response = supabase.table("product_contents").insert(record).execute()
             inserted = getattr(response, "data", []) or []
+            print(inserted)
             return jsonify(inserted[0 if inserted else record]), 201
         response = (
-            supabase.table("education_content")
+            supabase.table("product_contents")
             .select("id,title,content,category")
             .execute()
         )
