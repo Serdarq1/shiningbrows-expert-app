@@ -28,6 +28,13 @@
         </svg>
         <span class="text-sm font-medium">Panel</span>
       </button>
+      <button class="nav-btn" data-target="profile-section" title="Profil">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21a8 8 0 1 0-16 0"></path>
+          <circle cx="12" cy="8" r="4"></circle>
+        </svg>
+        <span class="text-sm font-medium">Profil</span>
+      </button>
       <button class="nav-btn" data-target="feed-section" title="Uzman Akışı">
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
           <path d="M7 10s1.5-2 5-2 5 2 5 2"></path>
@@ -52,6 +59,15 @@
           <circle cx="12" cy="13" r="3"></circle>
         </svg>
         <span class="text-sm font-medium">Fotoğraflar</span>
+      </button>
+      <button class="nav-btn" data-target="experts-section" title="Uzmanlar">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21a5 5 0 0 0-10 0"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+          <path d="M22 21a5 5 0 0 0-6-4.9"></path>
+          <path d="M18 9a3 3 0 1 0-2-5.6"></path>
+        </svg>
+        <span class="text-sm font-medium">Uzmanlar</span>
       </button>
       <button class="nav-btn" data-target="campaigns-section" title="Kampanyalar">
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -87,7 +103,7 @@
   <header class="bg-gradient-to-br from-brand-500 to-brand-400 rounded-3xl p-5 shadow-xl text-white">
     <div class="flex items-center gap-3">
       <div class="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center overflow-hidden">
-        <img src="../static/img/sb-logo.png" alt="Shining Brows logo" class="w-full h-full object-cover">
+        <img src="../static/img/sb-logo.png" alt="Profil Görseli" class="w-full h-full object-cover" id="profile-logo">
       </div>
       <div>
         <p class="text-xs uppercase tracking-[0.2em] text-brand-50">SHINING BROWS</p>
@@ -129,6 +145,45 @@
         <h3 class="font-semibold">Kurallar & Kısıtlamalar</h3>
       </div>
       <div id="rule-list" class="space-y-3"></div>
+    </div>
+
+  </section>
+
+  <section id="profile-section" class="space-y-4 hidden md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
+    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
+      <div class="flex items-center gap-2">
+        <h3 class="font-semibold">Profil Fotoğrafı</h3>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="w-20 h-20 rounded-2xl bg-brand-50 border border-brand-100 overflow-hidden flex items-center justify-center">
+          <img id="profile-avatar" src="../static/img/logo-transparent.png" alt="Profil fotoğrafı" class="w-full h-full object-cover">
+        </div>
+        <form id="avatar-form" class="flex-1 space-y-2">
+          <input name="avatar" type="file" accept="image/*"
+                 class="w-full text-sm text-slate-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand-500 file:text-white file:font-semibold">
+          <button type="submit" class="w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold shadow-md">
+            Fotoğrafı Güncelle
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
+      <div class="flex items-center gap-2">
+        <h3 class="font-semibold">Profil Ayarları</h3>
+      </div>
+      <div>
+        <p class="text-xs ">Uzmanlık Durumu:</p>
+        <p class="text-sm bg-gray-100 p-3 w-full text-zinc-800 rounded-lg text-lg" id="expert-status"></p>
+      </div>
+      <form id="profile-form" class="space-y-3">
+        <input id="profile-phone" name="phone" placeholder="Telefon numarası"
+               class="w-full rounded-xl bg-white border border-brand-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
+        <button type="submit" class="w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold shadow-md">
+          Kaydet
+        </button>
+      </form>
+      <p id="profile-success" class="hidden text-sm text-emerald-600">Profil güncellendi.</p>
     </div>
 
     <div id="password-card" class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
@@ -240,6 +295,28 @@
 
   </section>
 
+  <section id="experts-section" class="space-y-4 hidden">
+    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
+      <div class="flex items-center gap-2">
+        <span class="text-lg">👥</span>
+        <h3 class="font-semibold">Uzmanlar</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="text-slate-500">
+            <tr class="border-b border-brand-100">
+              <th class="text-left py-2 pr-4 font-semibold">Fotoğraf</th>
+              <th class="text-left py-2 pr-4 font-semibold">Ad Soyad</th>
+              <th class="text-left py-2 pr-4 font-semibold">Uzmanlık</th>
+              <th class="text-left py-2 pr-4 font-semibold">Telefon</th>
+            </tr>
+          </thead>
+          <tbody id="experts-table" class="text-slate-700"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
   <section id="books-section" class="space-y-4 hidden">
     <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -296,5 +373,13 @@
     </div>
   </section>
 </div>
+
+<div
+  id="toast"
+  class="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl shadow-lg text-sm font-semibold"
+  style="opacity: 0; pointer-events: none; transform: translate(-50%, 12px); background: #0f172a; color: #ffffff;"
+  role="status"
+  aria-live="polite"
+></div>
 
 {% endblock %}

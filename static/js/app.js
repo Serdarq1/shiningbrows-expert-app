@@ -1,4 +1,14 @@
-const sections = ["dashboard-section", "products-section", "photos-section", "feed-section", "campaigns-section", "books-section", "support-section"];
+const sections = [
+  "dashboard-section",
+  "profile-section",
+  "products-section",
+  "photos-section",
+  "feed-section",
+  "campaigns-section",
+  "experts-section",
+  "books-section",
+  "support-section",
+];
 const FEED_REACTIONS = [
   { id: "like", label: "👍" },
   { id: "love", label: "❤️" },
@@ -27,8 +37,11 @@ document.addEventListener("DOMContentLoaded", () => {
   loadBook();
   loadFaqs();
   loadPhotos();
+  loadExperts();
   setupSupportForm();
   setupPhotoForm();
+  setupProfileForm();
+  setupAvatarForm();
   setupPasswordForm();
   setupWorkshopAdmin();
   setupBookForm();
@@ -139,7 +152,12 @@ function setupFeedControls() {
 }
 
 async function fetchJSON(url, options = {}) {
-  const response = await fetch(url, options);
+  const opts = { ...options };
+  const method = (opts.method || "GET").toUpperCase();
+  if (method === "GET" && !opts.cache) {
+    opts.cache = "no-store";
+  }
+  const response = await fetch(url, opts);
   if (!response.ok) {
     const text = await response.text();
     throw new Error(text || "İstek başarısız");
@@ -147,16 +165,71 @@ async function fetchJSON(url, options = {}) {
   return response.json();
 }
 
+function showToast(message, { type = "info", duration = 2200 } = {}) {
+  const toast = document.getElementById("toast");
+  if (!toast) return;
+  let background = "#0f172a";
+  if (type === "success") background = "#16a34a";
+  if (type === "error") background = "#dc2626";
+  toast.textContent = message;
+  toast.style.background = background;
+  toast.style.opacity = "1";
+  toast.style.pointerEvents = "auto";
+  toast.style.transform = "translate(-50%, 0)";
+  window.clearTimeout(toast.dataset.timerId);
+  const timerId = window.setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.pointerEvents = "none";
+    toast.style.transform = "translate(-50%, 12px)";
+  }, duration);
+  toast.dataset.timerId = String(timerId);
+}
+
+function formatExpertStatus(status) {
+  if (!status) return "-";
+  const normalized = String(status).toLowerCase().trim();
+  if (normalized === "student") return "Shining Expert";
+  if (normalized === "shining expert") return "Shining Expert";
+  if (normalized === "master trainer") return "Master Trainer";
+  return status;
+}
+
+function toTitleCase(value) {
+  if (!value) return "";
+  return String(value)
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 async function loadStudent() {
   try {
     const student = await fetchJSON("/api/student");
-    document.getElementById("student-name").textContent = student.name;
+    document.getElementById("student-name").textContent = toTitleCase(student.name);
     document.getElementById("expert-id").textContent = `Uzman ID: ${student.id}`;
     document.getElementById("workshop-name").textContent = student.workshop_name || "-";
     document.getElementById("certificate-date").textContent = student.date || "-";
     document.getElementById("certificate-status").textContent = student.status || "Aktif";
     currentUserRole = student.role || "student";
     studentHasPassword = !!student.has_password;
+    const phoneInput = document.getElementById("profile-phone");
+    if (phoneInput) {
+      phoneInput.value = student.phone || "";
+    }
+    const avatar = document.getElementById("profile-avatar");
+    if (avatar) {
+      avatar.src = student.avatar_url || "../static/img/logo-transparent.png";
+    }
+    const profileLogo = document.getElementById("profile-logo")
+    if (profileLogo) {
+      profileLogo.src = student.avatar_url || "../static/img/logo-transparent.png"
+    }
+    const statusText = document.getElementById("expert-status");
+    if (statusText) {
+      statusText.textContent = formatExpertStatus(student.expert_status);
+    }
     refreshPasswordUI();
     refreshWorkshopAdminVisibility();
     loadFeed();
@@ -470,6 +543,40 @@ async function loadBook() {
   }
 }
 
+async function loadExperts() {
+  const table = document.getElementById("experts-table");
+  if (!table) return;
+  table.innerHTML = '<tr><td class="py-3 text-sm text-slate-500" colspan="4">Yükleniyor...</td></tr>';
+  try {
+    const experts = await fetchJSON("/api/experts");
+    if (!experts.length) {
+      table.innerHTML = '<tr><td class="py-3 text-sm text-slate-500" colspan="4">Henüz uzman yok.</td></tr>';
+      return;
+    }
+    table.innerHTML = "";
+    experts.forEach((expert) => {
+      const row = document.createElement("tr");
+      row.className = "border-b border-brand-50";
+      const avatarUrl = expert.avatar_url || "../static/img/user-logo.png";
+      const statusLabel = formatExpertStatus(expert.expert_status);
+      const phoneLabel = expert.phone || "-";
+      row.innerHTML = `
+        <td class="py-2 pr-4">
+          <div class="w-9 h-9 rounded-xl overflow-hidden border border-brand-100 bg-brand-50">
+            <img src="${avatarUrl}" alt="${toTitleCase(expert.name) || "Uzman"}" class="w-full h-full object-cover">
+          </div>
+        </td>
+        <td class="py-2 pr-4 font-semibold">${toTitleCase(expert.name) || "-"}</td>
+        <td class="py-2 pr-4">${statusLabel}</td>
+        <td class="py-2 pr-4">${phoneLabel}</td>
+      `;
+      table.appendChild(row);
+    });
+  } catch (err) {
+    table.innerHTML = '<tr><td class="py-3 text-sm text-red-500" colspan="4">Uzmanlar yüklenemedi.</td></tr>';
+  }
+}
+
 function setupWorkshopAdmin() {
   const form = document.getElementById("workshop-form");
   const success = document.getElementById("workshop-success");
@@ -545,6 +652,62 @@ function setupPasswordForm() {
     }
   });
   toggle();
+}
+
+function setupProfileForm() {
+  const form = document.getElementById("profile-form");
+  const success = document.getElementById("profile-success");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const phone = form.phone.value.trim();
+    if (!phone) {
+      showToast("Lütfen telefon numarası girin.", { type: "error" });
+      return;
+    }
+    try {
+      await fetchJSON("/api/account/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      if (success) {
+        success.classList.remove("hidden");
+        setTimeout(() => success.classList.add("hidden"), 2000);
+      }
+      showToast("Profil güncellendi.", { type: "success" });
+      loadExperts();
+    } catch (err) {
+      showToast("Profil güncellenemedi.", { type: "error" });
+    }
+  });
+}
+
+function setupAvatarForm() {
+  const form = document.getElementById("avatar-form");
+  const avatar = document.getElementById("profile-avatar");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const file = form.avatar.files[0];
+    if (!file) {
+      showToast("Lütfen fotoğraf seçin.", { type: "error" });
+      return;
+    }
+    const formData = new FormData();
+    formData.append("avatar", file);
+    try {
+      const result = await fetchJSON("/api/account/avatar", { method: "POST", body: formData });
+      if (avatar && result.avatar_url) {
+        avatar.src = result.avatar_url;
+      }
+      form.reset();
+      showToast("Profil fotoğrafı güncellendi.", { type: "success" });
+      loadExperts();
+    } catch (err) {
+      showToast("Profil fotoğrafı yüklenemedi.", { type: "error" });
+    }
+  });
 }
 
 function setupBookForm() {
@@ -644,6 +807,9 @@ async function loadPhotos() {
       card.className = "relative rounded-xl overflow-hidden border border-brand-100 shadow-sm bg-white";
       card.innerHTML = `
         <img src="${photo.image_url}" alt="İşlem fotoğrafı" class="w-full h-32 object-cover">
+        <button type="button" data-photo-delete class="absolute top-2 right-2 z-10 px-2.5 py-1.5 rounded-lg bg-red-500 text-xs font-semibold text-white border border-red-600 shadow">
+          Sil
+        </button>
         ${
           photo.is_monthly_winner
             ? '<span class="absolute top-2 left-2 px-2 py-1 rounded-lg bg-amber-400 text-amber-900 text-xs font-bold">Bu Ayın En Güzel İşlemi</span>'
@@ -655,6 +821,27 @@ async function loadPhotos() {
             : ""
         }
       `;
+      const deleteBtn = card.querySelector("[data-photo-delete]");
+      if (deleteBtn) {
+        deleteBtn.addEventListener("click", async () => {
+          if (!confirm("Fotoğraf silinsin mi?")) return;
+          deleteBtn.disabled = true;
+          try {
+            await fetchJSON(`/api/photos/${photo.id}`, { method: "DELETE" });
+            card.remove();
+            if (!gallery.querySelector("div")) {
+              gallery.innerHTML = '<p class="text-sm text-slate-600 text-center py-4">Henüz fotoğraf yok.</p>';
+            }
+            showToast("Fotoğraf silindi.", { type: "success" });
+            await loadPhotos();
+            await loadFeed();
+          } catch (err) {
+            showToast("Fotoğraf silinemedi.", { type: "error" });
+          } finally {
+            deleteBtn.disabled = false;
+          }
+        });
+      }
       gallery.appendChild(card);
     });
   } catch (err) {
@@ -701,7 +888,8 @@ function renderFeed() {
     const card = document.createElement("div");
     card.className = "rounded-2xl border border-brand-100 shadow-sm bg-white overflow-hidden";
     const date = photo.created_at ? new Date(photo.created_at).toLocaleDateString("tr-TR") : "";
-    const initials = (photo.student_name || "Uzman").slice(0, 2).toUpperCase();
+    const displayName = toTitleCase(photo.student_name || "Uzman");
+    const initials = displayName.slice(0, 2).toUpperCase();
     const winnerBadge =
       photo.is_monthly_winner
         ? '<span class="px-3 py-1 rounded-full bg-green-100 text-green-800 text-xs font-semibold border border-green-200">Bu Ayın Kazananı</span>'
@@ -711,7 +899,7 @@ function renderFeed() {
         <div class="flex items-center gap-3">
           <div class="h-10 w-10 rounded-full bg-brand-50 border border-brand-100 flex items-center justify-center text-sm font-semibold text-brand-700">${initials}</div>
           <div>
-            <p class="font-semibold text-sm text-slate-800">${photo.student_name || "Uzman"}</p>
+            <p class="font-semibold text-sm text-slate-800">${displayName}</p>
             <p class="text-xs text-slate-500">${date}</p>
           </div>
         </div>
@@ -780,8 +968,9 @@ function renderFeed() {
         const row = document.createElement("div");
         const fbDate = fb.created_at ? new Date(fb.created_at).toLocaleDateString("tr-TR") : "";
         row.className = "p-2 rounded-lg bg-brand-50 border border-brand-100";
+        const feedbackName = toTitleCase(fb.student_name || "Uzman");
         row.innerHTML = `
-          <p class="text-xs font-semibold text-slate-700">${fb.student_name || "Uzman"} <span class="text-[11px] text-slate-400">${fbDate}</span></p>
+          <p class="text-xs font-semibold text-slate-700">${feedbackName} <span class="text-[11px] text-slate-400">${fbDate}</span></p>
           <p class="text-sm text-slate-700">${fb.feedback}</p>
         `;
         feedbackList.appendChild(row);

@@ -59,6 +59,7 @@ SUPABASE_BOOK_BUCKET = os.getenv("SUPABASE_BOOK_BUCKET", "books")
 SUPABASE_TRUST_ENV = (os.getenv("SUPABASE_TRUST_ENV", "true").lower() in ("1", "true", "yes"))
 ALLOWED_REACTIONS = {"like", "love", "wow", "clap"}
 ELEVATED_ROLES = {"master", "admin"}
+ALLOWED_EXPERT_STATUSES = {"shining expert", "master trainer"}
 
 
 supabase: Optional[Client] = None
@@ -139,6 +140,22 @@ def build_image_url(path: str) -> Optional[str]:
     except Exception as exc:
         print("Public URL fallback failed:", exc)
 
+    return None
+
+
+def extract_storage_key(path: str) -> Optional[str]:
+    """Extract bucket-relative storage key from a URL or stored path."""
+    if not path:
+        return None
+    if not (path.startswith("http://") or path.startswith("https://")):
+        return path
+    marker_public = f"/storage/v1/object/public/{SUPABASE_BUCKET}/"
+    marker_signed = f"/storage/v1/object/sign/{SUPABASE_BUCKET}/"
+    for marker in (marker_public, marker_signed):
+        idx = path.find(marker)
+        if idx != -1:
+            remainder = path[idx + len(marker):]
+            return remainder.split("?", 1)[0]
     return None
 
 
@@ -260,6 +277,12 @@ def api_student() -> Any:
     student_copy = dict(student)
     has_password = bool(student_copy.pop("password", None))
     student_copy["has_password"] = has_password
+    avatar_key = student_copy.get("avatar_url", "")
+    if avatar_key:
+        student_copy["avatar_path"] = avatar_key
+        avatar_url = build_image_url(avatar_key)
+        if avatar_url:
+            student_copy["avatar_url"] = avatar_url
     return jsonify(student_copy)
 
 
@@ -393,7 +416,9 @@ def api_photos_get() -> Any:
 
     photos = fetch_table("photos", {"student_id": student["id"]})
     for p in photos:
-        url = build_image_url(p.get("image_url", ""))
+        storage_key = p.get("image_url", "")
+        p["image_path"] = storage_key
+        url = build_image_url(storage_key)
         if url:
             p["image_url"] = url
     return jsonify(photos)
@@ -458,6 +483,7 @@ def api_photos_post() -> Any:
         return jsonify({"error": "Supabase bağlantı hatası."})
     response_record = dict(record)
     response_record["image_url"] = image_url
+    response_record["image_path"] = storage_key
     return jsonify(response_record), 201
 
 
@@ -554,7 +580,9 @@ def api_photos_feed() -> Any:
                 fb_student_id = fb.get("student_id")
                 fb["student_name"] = names.get(fb_student_id, "Uzman")
             photo["feedbacks"] = photo_feedbacks
-            url = build_image_url(photo.get("image_url", ""))
+            storage_key = photo.get("image_url", "")
+            photo["image_path"] = storage_key
+            url = build_image_url(storage_key)
             if url:
                 photo["image_url"] = url
     except Exception as exc:
@@ -600,6 +628,47 @@ def api_photos_reaction() -> Any:
     except Exception as exc:
         print("Reaction save failed:", exc)
         return jsonify({"error": "Reaksiyon kaydedilemedi."}), 500
+
+    return jsonify({"ok": True})
+
+
+@app.route("/api/photos/<int:photo_id>", methods=["DELETE"])
+def api_photos_delete(photo_id: int) -> Any:
+    student = get_current_student()
+    if not student:
+        return jsonify({"error": "Oturum bulunamadı"}), 401
+    if not supabase:
+        return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+
+    try:
+        response = supabase.table("photos").select("id,student_id,image_url").eq("id", photo_id).execute()
+        rows = getattr(response, "data", []) or []
+        if not rows:
+            return jsonify({"error": "Fotoğraf bulunamadı."}), 404
+        photo = rows[0]
+    except Exception as exc:
+        print("Photo lookup failed:", exc)
+        return jsonify({"error": "Fotoğraf bulunamadı."}), 404
+
+    is_owner = photo.get("student_id") == student.get("id")
+    can_delete = is_owner or student.get("role") in ELEVATED_ROLES
+    if not can_delete:
+        return jsonify({"error": "Yetkisiz işlem"}), 403
+
+    storage_key = extract_storage_key(photo.get("image_url", ""))
+    if storage_key:
+        try:
+            supabase.storage.from_(SUPABASE_BUCKET).remove([storage_key])
+        except Exception as exc:
+            print("Storage delete failed:", exc)
+
+    try:
+        supabase.table("photo_reactions").delete().eq("photo_id", photo_id).execute()
+        supabase.table("photo_feedbacks").delete().eq("photo_id", photo_id).execute()
+        supabase.table("photos").delete().eq("id", photo_id).execute()
+    except Exception as exc:
+        print("Photo delete failed:", exc)
+        return jsonify({"error": "Fotoğraf silinemedi."}), 500
 
     return jsonify({"ok": True})
 
@@ -780,6 +849,107 @@ def update_password() -> Any:
     except Exception as exc:
         print("Password update failed:", exc)
         return jsonify({"error": "Şifre kaydedilemedi."}), 500
+
+
+@app.route("/api/account/profile", methods=["POST"])
+def update_profile() -> Any:
+    student = get_current_student()
+    if not student:
+        return jsonify({"error": "Oturum bulunamadı"}), 401
+    if not supabase:
+        return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+
+    payload = request.get_json() or {}
+    expert_status = (payload.get("expert_status") or "").strip().lower()
+    phone = payload.get("phone")
+
+    updates: Dict[str, Any] = {}
+    if expert_status:
+        if expert_status not in ALLOWED_EXPERT_STATUSES:
+            return jsonify({"error": "Geçersiz uzmanlık durumu."}), 400
+        updates["expert_status"] = expert_status
+    if phone is not None:
+        updates["phone"] = str(phone).strip()
+
+    if not updates:
+        return jsonify({"error": "Güncellenecek bilgi bulunamadı."}), 400
+
+    try:
+        supabase.table("shining_brows_student_database").update(updates).eq("id", student["id"]).execute()
+    except Exception as exc:
+        print("Profile update failed:", exc)
+        return jsonify({"error": "Profil güncellenemedi."}), 500
+
+    return jsonify({"ok": True, **updates})
+
+
+@app.route("/api/account/avatar", methods=["POST"])
+def update_avatar() -> Any:
+    student = get_current_student()
+    if not student:
+        return jsonify({"error": "Oturum bulunamadı"}), 401
+    if not supabase:
+        return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+    if "avatar" not in request.files:
+        return jsonify({"error": "Fotoğraf yüklenemedi"}), 400
+
+    avatar = request.files["avatar"]
+    filename = avatar.filename or ""
+    extension = os.path.splitext(filename)[1] or ".jpg"
+    mimetype = avatar.mimetype or "application/octet-stream"
+    if not mimetype.startswith("image/") and extension.lower() not in {".heic", ".heif"}:
+        return jsonify({"error": "Lütfen geçerli bir resim dosyası yükleyin."}), 400
+
+    file_bytes = avatar.read()
+    if not file_bytes:
+        return jsonify({"error": "Dosya boş görünüyor."}), 400
+
+    file_bytes, mimetype, extension = convert_image_if_needed(file_bytes, mimetype, extension)
+    storage_key = f"avatars/{student['id']}/{uuid.uuid4().hex}{extension}"
+
+    try:
+        supabase.storage.from_(SUPABASE_BUCKET).upload(
+            path=storage_key,
+            file=file_bytes,
+            file_options={"content-type": mimetype, "upsert": "false"},
+        )
+        avatar_url = build_image_url(storage_key) or storage_key
+    except Exception as exc:
+        print("Avatar upload failed:", exc)
+        return jsonify({"error": "Fotoğraf yüklenemedi."}), 500
+
+    try:
+        supabase.table("shining_brows_student_database").update({"avatar_url": storage_key}).eq("id", student["id"]).execute()
+    except Exception as exc:
+        print("Avatar DB update failed:", exc)
+        return jsonify({"error": "Profil fotoğrafı kaydedilemedi."}), 500
+
+    return jsonify({"ok": True, "avatar_url": avatar_url, "avatar_path": storage_key})
+
+
+@app.route("/api/experts", methods=["GET"])
+def api_experts() -> Any:
+    if not supabase:
+        return jsonify([])
+    try:
+        response = supabase.table("shining_brows_student_database").select("*").order("name", desc=False).execute()
+        students = getattr(response, "data", []) or []
+    except Exception as exc:
+        print("Experts fetch failed:", exc)
+        return jsonify([])
+
+    results = []
+    for student in students:
+        student_copy = dict(student)
+        student_copy.pop("password", None)
+        avatar_key = student_copy.get("avatar_url", "")
+        if avatar_key:
+            student_copy["avatar_path"] = avatar_key
+            avatar_url = build_image_url(avatar_key)
+            if avatar_url:
+                student_copy["avatar_url"] = avatar_url
+        results.append(student_copy)
+    return jsonify(results)
 
 
 @app.route("/api/faqs", methods=["POST", "GET"])
