@@ -7,6 +7,7 @@ const sections = [
   "campaigns-section",
   "experts-section",
   "books-section",
+  "videos-section",
   "support-section",
 ];
 const FEED_REACTIONS = [
@@ -37,6 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
   loadBook();
   loadFaqs();
   loadPhotos();
+  loadVideos();
   loadExperts();
   setupSupportForm();
   setupPhotoForm();
@@ -45,6 +47,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupPasswordForm();
   setupWorkshopAdmin();
   setupBookForm();
+  setupVideoForm();
 });
 
 function setupNavigation() {
@@ -159,6 +162,12 @@ async function fetchJSON(url, options = {}) {
   }
   const response = await fetch(url, opts);
   if (!response.ok) {
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const data = await response.json();
+      const message = data.error || data.message || "İstek başarısız";
+      throw new Error(message);
+    }
     const text = await response.text();
     throw new Error(text || "İstek başarısız");
   }
@@ -258,7 +267,10 @@ function refreshWorkshopAdminVisibility() {
   card.classList.toggle("hidden", !canEdit);
   const bookCard = document.getElementById("book-admin-card");
   if (bookCard) bookCard.classList.toggle("hidden", !canEdit);
+  const videoCard = document.getElementById("video-admin-card");
+  if (videoCard) videoCard.classList.toggle("hidden", !canEdit);
 }
+
 
 function formatTextWithLineBreaks(text) {
   if (!text) return "";
@@ -543,6 +555,40 @@ async function loadBook() {
   }
 }
 
+async function loadVideos() {
+  const container = document.getElementById("video-list");
+  if (!container) return;
+  container.innerHTML = spinner({ size: 28 });
+  try {
+    const videos = await fetchJSON("/api/videos");
+    if (!videos.length) {
+      container.innerHTML = '<p class="text-sm text-slate-600">Henüz video yok.</p>';
+      return;
+    }
+    container.innerHTML = "";
+    videos.forEach((video) => {
+      const card = document.createElement("div");
+      const title = video.title || "Video";
+      const date = video.created_at ? new Date(video.created_at).toLocaleDateString("tr-TR") : "";
+      card.className = "rounded-2xl border border-brand-100 bg-white p-4 space-y-3 shadow-sm";
+      card.innerHTML = `
+        <div class="flex items-center justify-between">
+          <h4 class="font-semibold">${title}</h4>
+          <span class="text-xs text-slate-500">${date}</span>
+        </div>
+        <div class="w-full aspect-video rounded-xl overflow-hidden bg-black">
+          <video controls class="w-full h-full object-cover">
+            <source src="${video.video_url}" type="video/mp4">
+          </video>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  } catch (err) {
+    container.innerHTML = '<p class="text-sm text-red-500">Videolar yüklenemedi.</p>';
+  }
+}
+
 async function loadExperts() {
   const table = document.getElementById("experts-table");
   if (!table) return;
@@ -734,6 +780,53 @@ function setupBookForm() {
       loadBook();
     } catch (err) {
       alert("PDF yüklenemedi.");
+    }
+  });
+}
+
+function setupVideoForm() {
+  const form = document.getElementById("video-form");
+  if (!form) return;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    
+    const success = document.getElementById("video-success");
+    const urlInput = form.querySelector('input[name="video_url"]');
+    const titleInput = form.querySelector('input[name="video_title"]');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    
+    const url = urlInput ? urlInput.value.trim() : "";
+    const title = titleInput ? titleInput.value.trim() : "";
+    
+    if (!url) {
+      showToast("Lütfen video linki girin.", { type: "error" });
+      return;
+    }
+    
+    if (submitBtn) submitBtn.disabled = true;
+    showToast("Video yükleniyor...", { type: "info" });
+    
+    try {
+      await fetchJSON("/api/videos/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, title }),
+      });
+      
+      if (success) {
+        success.classList.remove("hidden");
+        setTimeout(() => success.classList.add("hidden"), 2000);
+      }
+      
+      form.reset();
+      showToast("Video yüklendi.", { type: "success" });
+      loadVideos();
+    } catch (err) {
+      const message = err && err.message ? err.message : "Video yüklenemedi.";
+      showToast(message, { type: "error" });
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
     }
   });
 }

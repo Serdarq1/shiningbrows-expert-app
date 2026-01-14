@@ -2,6 +2,15 @@ import io
 import os
 import uuid
 from datetime import UTC, datetime
+from tempfile import NamedTemporaryFile
+import ssl
+import re
+import socket
+from urllib.parse import parse_qs, urlparse
+from urllib.request import Request, urlopen
+from urllib.error import URLError
+from http.cookiejar import CookieJar
+from urllib.request import build_opener, HTTPCookieProcessor, HTTPSHandler
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
@@ -56,10 +65,14 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "Images")
 SUPABASE_BOOK_BUCKET = os.getenv("SUPABASE_BOOK_BUCKET", "books")
+SUPABASE_VIDEO_BUCKET = os.getenv("SUPABASE_VIDEO_BUCKET", "videos")
 SUPABASE_TRUST_ENV = (os.getenv("SUPABASE_TRUST_ENV", "true").lower() in ("1", "true", "yes"))
 ALLOWED_REACTIONS = {"like", "love", "wow", "clap"}
 ELEVATED_ROLES = {"master", "admin"}
 ALLOWED_EXPERT_STATUSES = {"shining expert", "master trainer"}
+MAX_VIDEO_MB = int(os.getenv("MAX_VIDEO_MB", "250"))
+DISABLE_SSL_VERIFY = os.getenv("DISABLE_SSL_VERIFY", "false").lower() in ("1", "true", "yes")
+DOWNLOAD_TIMEOUT_SEC = int(os.getenv("DOWNLOAD_TIMEOUT_SEC", "60"))
 
 
 supabase: Optional[Client] = None
@@ -98,13 +111,8 @@ def fetch_table(table: str, filters: Optional[Dict[str, Any]] = None) -> List[Di
     return []
 
 
-def build_image_url(path: str) -> Optional[str]:
-    """Return a browser-friendly URL for a stored image.
-
-    Handles both absolute URLs already stored in the DB and bucket-relative
-    paths by generating a signed URL (default 7 days) when needed. Falls back
-    to a public URL if signing fails.
-    """
+def build_storage_url(path: str, bucket: str) -> Optional[str]:
+    """Return a browser-friendly URL for a stored asset in a bucket."""
     if not path:
         return None
     if path.startswith("http://") or path.startswith("https://"):
@@ -112,7 +120,7 @@ def build_image_url(path: str) -> Optional[str]:
     if not supabase:
         return None
     try:
-        resp = supabase.storage.from_(SUPABASE_BUCKET).create_signed_url(path, 60 * 60 * 24 * 7)
+        resp = supabase.storage.from_(bucket).create_signed_url(path, 60 * 60 * 24 * 7)
         if isinstance(resp, dict):
             url = resp.get("signedURL") or resp.get("signedUrl") or resp.get("signed_url")
             if not url and isinstance(resp.get("data"), dict):
@@ -134,13 +142,18 @@ def build_image_url(path: str) -> Optional[str]:
         print("Signed URL generation failed:", exc)
 
     try:
-        public = supabase.storage.from_(SUPABASE_BUCKET).get_public_url(path)
+        public = supabase.storage.from_(bucket).get_public_url(path)
         if public:
             return public
     except Exception as exc:
         print("Public URL fallback failed:", exc)
 
     return None
+
+
+def build_image_url(path: str) -> Optional[str]:
+    """Return a browser-friendly URL for a stored image."""
+    return build_storage_url(path, SUPABASE_BUCKET)
 
 
 def extract_storage_key(path: str) -> Optional[str]:
@@ -157,6 +170,135 @@ def extract_storage_key(path: str) -> Optional[str]:
             remainder = path[idx + len(marker):]
             return remainder.split("?", 1)[0]
     return None
+
+
+def extract_drive_file_id(url: str) -> Optional[str]:
+    if not url:
+        return None
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return None
+    if "drive.google.com" not in parsed.netloc:
+        return None
+    if parsed.path.startswith("/file/d/"):
+        parts = parsed.path.split("/")
+        if len(parts) >= 4:
+            return parts[3]
+    if parsed.path.startswith("/uc"):
+        query = parse_qs(parsed.query)
+        file_id = query.get("id", [None])[0]
+        if file_id:
+            return file_id
+    if parsed.path.startswith("/open"):
+        query = parse_qs(parsed.query)
+        file_id = query.get("id", [None])[0]
+        if file_id:
+            return file_id
+    return None
+
+
+def _download_to_temp(response, content_type: str) -> Dict[str, Any]:
+    with NamedTemporaryFile(delete=False) as tmp:
+        total = 0
+        chunk_size = 1024 * 1024
+        while True:
+            chunk = response.read(chunk_size)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_VIDEO_MB * 1024 * 1024:
+                raise ValueError("Dosya boyutu çok büyük.")
+            tmp.write(chunk)
+        if total == 0:
+            raise ValueError("Dosya boş görünüyor.")
+        return {"path": tmp.name, "content_type": content_type or "application/octet-stream"}
+
+
+def download_public_file(url: str) -> Optional[Dict[str, Any]]:
+    if not url:
+        return None
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    context = None
+    if DISABLE_SSL_VERIFY:
+        context = ssl._create_unverified_context()
+    try:
+        with urlopen(req, context=context, timeout=DOWNLOAD_TIMEOUT_SEC) as response:
+            content_type = response.headers.get("Content-Type", "").split(";")[0].strip()
+            length_header = response.headers.get("Content-Length")
+            if length_header:
+                max_bytes = MAX_VIDEO_MB * 1024 * 1024
+                if int(length_header) > max_bytes:
+                    raise ValueError("Dosya boyutu çok büyük.")
+            if content_type.startswith("text/html"):
+                raise ValueError("Link video dosyasına yönlendirmiyor.")
+            return _download_to_temp(response, content_type)
+    except (socket.timeout, URLError) as exc:
+        raise ValueError("İndirme zaman aşımına uğradı.") from exc
+
+
+def download_drive_file(file_id: str) -> Optional[Dict[str, Any]]:
+    if not file_id:
+        return None
+    context = None
+    if DISABLE_SSL_VERIFY:
+        context = ssl._create_unverified_context()
+    cookies = CookieJar()
+    handlers = [HTTPCookieProcessor(cookies)]
+    if context:
+        handlers.append(HTTPSHandler(context=context))
+    opener = build_opener(*handlers)
+    opener.addheaders = [("User-Agent", "Mozilla/5.0")]
+    base_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    try:
+        response = opener.open(base_url, timeout=DOWNLOAD_TIMEOUT_SEC)
+        content_type = response.headers.get("Content-Type", "").split(";")[0].strip()
+        if content_type.startswith("text/html"):
+            html = response.read().decode("utf-8", errors="ignore")
+            token = None
+            for cookie in cookies:
+                if cookie.name.startswith("download_warning"):
+                    token = cookie.value
+                    break
+            if not token:
+                match = re.search(r"confirm=([0-9A-Za-z_]+)", html)
+                if match:
+                    token = match.group(1)
+            confirm_url = None
+            if token:
+                confirm_url = f"https://drive.google.com/uc?export=download&confirm={token}&id={file_id}"
+            else:
+                link_match = re.search(r'href="(/uc\?export=download[^"]+)"', html)
+                if link_match:
+                    confirm_url = f"https://drive.google.com{link_match.group(1)}"
+                if not confirm_url:
+                    form_match = re.search(r'<form[^>]+action="([^"]+)"', html)
+                    if form_match:
+                        action = form_match.group(1)
+                        if action.startswith("/"):
+                            action = f"https://drive.google.com{action}"
+                        inputs = dict(re.findall(r'name="([^"]+)" value="([^"]*)"', html))
+                        if "id" not in inputs:
+                            inputs["id"] = file_id
+                        query = "&".join(f"{key}={value}" for key, value in inputs.items() if value is not None)
+                        if query:
+                            confirm_url = f"{action}?{query}"
+            if not confirm_url:
+                confirm_url = f"https://drive.google.com/uc?export=download&confirm=t&id={file_id}"
+            response = opener.open(confirm_url, timeout=DOWNLOAD_TIMEOUT_SEC)
+            content_type = response.headers.get("Content-Type", "").split(";")[0].strip()
+            if content_type.startswith("text/html") and not token:
+                fallback_url = f"https://drive.google.com/uc?export=download&confirm=1&id={file_id}"
+                response = opener.open(fallback_url, timeout=DOWNLOAD_TIMEOUT_SEC)
+                content_type = response.headers.get("Content-Type", "").split(";")[0].strip()
+            if content_type.startswith("text/html"):
+                raise ValueError("Google Drive indirme izni alınamadı.")
+        if content_type.startswith("text/html"):
+            raise ValueError("Google Drive linki video dosyasına erişemedi.")
+        return _download_to_temp(response, content_type)
+    except (socket.timeout, URLError) as exc:
+        raise ValueError("İndirme zaman aşımına uğradı.") from exc
+
 
 
 def convert_image_if_needed(file_bytes: bytes, mimetype: str, extension: str):
@@ -354,6 +496,101 @@ def api_books_get() -> Any:
     except Exception as exc:
         print("Books fetch failed:", exc)
         return jsonify([])
+
+
+# ---------- Videos ----------
+
+@app.route("/api/videos", methods=["GET"])
+def api_videos_get() -> Any:
+    if not supabase:
+        return jsonify([])
+    try:
+        response = (
+            supabase.table("videos")
+            .select("id,title,video_url,created_at,student_id")
+            .order("created_at", desc=True)
+            .execute()
+        )
+        videos = getattr(response, "data", []) or []
+        for video in videos:
+            storage_key = video.get("video_url", "")
+            video["video_path"] = storage_key
+            url = build_storage_url(storage_key, SUPABASE_VIDEO_BUCKET) if storage_key else None
+            if url:
+                video["video_url"] = url
+        return jsonify(videos)
+    except Exception as exc:
+        print("Videos fetch failed:", exc)
+        return jsonify([])
+
+
+@app.route("/api/videos/import", methods=["POST"])
+def api_videos_import() -> Any:
+    student = get_current_student()
+    if not student:
+        return jsonify({"error": "Oturum bulunamadı"}), 401
+    if student.get("role") not in ELEVATED_ROLES:
+        return jsonify({"error": "Yetkisiz işlem"}), 403
+    if not supabase:
+        return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+
+    payload = request.get_json() or {}
+    url = (payload.get("url") or "").strip()
+    title = (payload.get("title") or "Video").strip()
+    if not url:
+        return jsonify({"error": "Video linki gerekli."}), 400
+
+    file_id = extract_drive_file_id(url)
+
+    temp_path = None
+    try:
+        if file_id:
+            downloaded = download_drive_file(file_id)
+        else:
+            downloaded = download_public_file(url)
+        if not downloaded:
+            return jsonify({"error": "Dosya indirilemedi."}), 400
+        temp_path = downloaded["path"]
+        content_type = downloaded["content_type"]
+        if not content_type.startswith("video/"):
+            content_type = "video/mp4"
+        extension = ".mp4"
+        storage_key = f"videos/{uuid.uuid4().hex}{extension}"
+        with open(temp_path, "rb") as handle:
+            supabase.storage.from_(SUPABASE_VIDEO_BUCKET).upload(
+                path=storage_key,
+                file=handle,
+                file_options={"content-type": content_type, "upsert": "false"},
+            )
+        video_url = supabase.storage.from_(SUPABASE_VIDEO_BUCKET).get_public_url(storage_key)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        print("Video import failed:", exc)
+        return jsonify({"error": "Video yüklenemedi."}), 500
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+    record = {
+        "title": title,
+        "video_url": storage_key,
+        "student_id": student["id"],
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    try:
+        db_response = supabase.table("videos").insert(record).execute()
+        inserted = getattr(db_response, "data", []) or []
+        if inserted:
+            record.update(inserted[0])
+    except Exception as exc:
+        print("Video DB insert failed:", exc)
+    record["video_url"] = video_url
+    record["video_path"] = storage_key
+    return jsonify(record), 201
 
 
 @app.route("/api/books/upload", methods=["POST"])
