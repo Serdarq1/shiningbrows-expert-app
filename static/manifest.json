@@ -1,7 +1,7 @@
 {
   "name": "Shining Brows Uzman Portalı",
   "short_name": "SB Expert Portal",
-  "start_url": "/",
+  "start_url": "https://shining-brows-experts.onrender.com/login",
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -19,5 +19,8 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "id": "sb_expert_portal",
+  "description": "Shining Brows uzman portalı ile tüm eğitim içeriğine, diğer uzmanların bilgilerine, E-kitaba ve daha fazlasına tek tıkla erişin.",
+  "lang": "tr"
 }
