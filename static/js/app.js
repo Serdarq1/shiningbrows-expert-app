@@ -1,4 +1,5 @@
 const sections = [
+  "panel-section",
   "dashboard-section",
   "profile-section",
   "products-section",
@@ -25,9 +26,12 @@ let pinWinner = false;
 let bookUrl = "";
 
 document.addEventListener("DOMContentLoaded", () => {
+  setupButtonHoverEffects();
   setupNavigation();
   setupSidebar();
   setupFeedControls();
+  setupPanelShortcuts();
+  setupNotificationButton();
   loadStudent();
   loadProducts();
   loadRules();
@@ -50,17 +54,42 @@ document.addEventListener("DOMContentLoaded", () => {
   setupVideoForm();
 });
 
+function setupButtonHoverEffects() {
+  const buttons = document.querySelectorAll("button");
+  buttons.forEach((btn) => {
+    btn.classList.add("transition", "duration-200", "ease-out", "hover:opacity-90");
+  });
+}
+
+function setupNotificationButton() {
+  const button = document.getElementById("notification-btn");
+  const popover = document.getElementById("notification-popover");
+  if (!button) return;
+  button.addEventListener("click", () => {
+    const unread = Number(button.dataset.unread || 0);
+    if (unread === 0) {
+      if (!popover) return;
+      popover.classList.toggle("hidden");
+    }
+  });
+  document.addEventListener("click", (event) => {
+    if (!popover || popover.classList.contains("hidden")) return;
+    if (event.target === button || button.contains(event.target)) return;
+    popover.classList.add("hidden");
+  });
+}
+
 function setupNavigation() {
   const buttons = document.querySelectorAll(".nav-btn");
   buttons.forEach((btn) => {
     btn.classList.add(
       "px-3",
       "py-3",
-      "rounded-2xl",
-      "bg-brand-50",
+      "rounded-lg",
+      "bg-gray-50",
       "border",
-      "border-brand-100",
-      "text-slate-700",
+      "border-gray-200",
+      "text-zinc-700",
       "font-semibold",
       "flex",
       "items-center",
@@ -76,8 +105,7 @@ function setupNavigation() {
     btn.addEventListener("click", () => {
       const target = btn.dataset.target;
       switchSection(target);
-      buttons.forEach((b) => b.classList.remove("bg-brand-600", "text-white", "border-brand-500"));
-      btn.classList.add("bg-brand-600", "text-white", "border-brand-500");
+      setActiveNav(target);
       if (typeof window.closeSidebar === "function") {
         window.closeSidebar();
       }
@@ -85,9 +113,48 @@ function setupNavigation() {
   });
   if (buttons.length) {
     const first = buttons[0];
-    first.classList.add("bg-brand-600", "text-white", "border-brand-500");
     switchSection(first.dataset.target);
+    setActiveNav(first.dataset.target);
   }
+}
+
+function setupPanelShortcuts() {
+  const shortcuts = document.querySelectorAll(".panel-shortcut");
+  if (!shortcuts.length) return;
+  shortcuts.forEach((shortcut) => {
+    shortcut.addEventListener("click", () => {
+      const target = shortcut.dataset.target;
+      if (!target) return;
+      switchSection(target);
+      setActiveNav(target);
+      if (typeof window.closeSidebar === "function") {
+        window.closeSidebar();
+      }
+    });
+  });
+}
+
+function setActiveNav(targetId) {
+  const buttons = document.querySelectorAll(".nav-btn");
+  buttons.forEach((btn) => {
+    btn.classList.remove("bg-zinc-900", "text-white", "border-zinc-900");
+    btn.classList.add("text-zinc-700");
+    const label = btn.querySelector("span");
+    if (label) {
+      label.classList.remove("text-white");
+      label.classList.add("text-zinc-700");
+    }
+  });
+  buttons.forEach((btn) => {
+    if (btn.dataset.target !== targetId) return;
+    btn.classList.add("bg-zinc-900", "text-white", "border-zinc-900");
+    btn.classList.remove("text-zinc-700");
+    const label = btn.querySelector("span");
+    if (label) {
+      label.classList.add("text-white");
+      label.classList.remove("text-zinc-700");
+    }
+  });
 }
 
 function setupSidebar() {
@@ -102,13 +169,21 @@ function setupSidebar() {
     overlay.classList.add("opacity-100");
   };
 
+  const toggleSidebar = () => {
+    if (sidebar.classList.contains("-translate-x-full")) {
+      openSidebar();
+    } else {
+      window.closeSidebar();
+    }
+  };
+
   window.closeSidebar = () => {
     sidebar.classList.add("-translate-x-full");
     overlay.classList.add("pointer-events-none", "opacity-0");
     overlay.classList.remove("opacity-100");
   };
 
-  toggle.addEventListener("click", openSidebar);
+  toggle.addEventListener("click", toggleSidebar);
   overlay.addEventListener("click", window.closeSidebar);
 }
 
@@ -127,14 +202,14 @@ function setupFeedControls() {
   const pinBtn = document.getElementById("pin-winner-btn");
   const updateStates = () => {
     if (filterBtn) {
-      filterBtn.classList.toggle("bg-brand-600", showWinnerOnly);
+      filterBtn.classList.toggle("bg-zinc-900", showWinnerOnly);
       filterBtn.classList.toggle("text-white", showWinnerOnly);
-      filterBtn.classList.toggle("border-brand-500", showWinnerOnly);
+      filterBtn.classList.toggle("border-zinc-900", showWinnerOnly);
     }
     if (pinBtn) {
-      pinBtn.classList.toggle("bg-brand-600", pinWinner);
+      pinBtn.classList.toggle("bg-zinc-900", pinWinner);
       pinBtn.classList.toggle("text-white", pinWinner);
-      pinBtn.classList.toggle("border-brand-500", pinWinner);
+      pinBtn.classList.toggle("border-zinc-900", pinWinner);
     }
   };
   if (filterBtn) {
@@ -231,9 +306,25 @@ async function loadStudent() {
     if (avatar) {
       avatar.src = student.avatar_url || "../static/img/logo-transparent.png";
     }
-    const profileLogo = document.getElementById("profile-logo")
+    const profileLogo = document.getElementById("profile-logo");
     if (profileLogo) {
-      profileLogo.src = student.avatar_url || "../static/img/logo-transparent.png"
+      profileLogo.src = student.avatar_url || "../static/img/logo-transparent.png";
+    }
+    const sidebarLogo = document.getElementById("sidebar-profile-logo");
+    if (sidebarLogo) {
+      sidebarLogo.src = student.avatar_url || "../static/img/logo-transparent.png";
+    }
+    const sidebarName = document.getElementById("sidebar-student-name");
+    if (sidebarName) {
+      sidebarName.textContent = toTitleCase(student.name);
+    }
+    const sidebarId = document.getElementById("sidebar-expert-id");
+    if (sidebarId) {
+      sidebarId.textContent = `Uzman ID: ${student.id}`;
+    }
+    const sidebarDate = document.getElementById("sidebar-certificate-date");
+    if (sidebarDate) {
+      sidebarDate.textContent = student.date || "-";
     }
     const statusText = document.getElementById("expert-status");
     if (statusText) {
@@ -312,20 +403,45 @@ async function loadProducts() {
   products.forEach((product) => {
     const steps = toBulletItems(product.steps);
     const card = document.createElement("div");
-    card.className = "rounded-xl border border-brand-100 bg-white p-3 space-y-2 shadow-sm";
+    card.className = "rounded-lg border border-gray-200 bg-white p-3 space-y-2";
     card.innerHTML = `
-      <div class="flex items-center justify-between">
-        <h4 class="font-semibold">${product.name}</h4>
-        <span class="text-xs text-slate-500">${product.short_description || ""}</span>
-      </div>
-      <div class="space-y-1 text-sm">
-        ${
-          steps.length
-            ? `<p class="text-slate-600">${steps.map((step) => `• ${step}`).join("<br>")}</p>`
-            : ""
-        }
+      <div class="product-img cursor-pointer">
+        <button class="flex items-center justify-center w-full" type="button">
+          <img src="./static/img/product-images/${product.name}.svg" width="150" alt="${product.name}" />
+        </button>
+        <div class="flex items-center justify-between">
+          <h4 class="font-semibold">${product.name}</h4>
+        </div>
+        <div class="product-details">
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-zinc-500">${product.short_description || ""}</span>
+          </div>
+          <div class="space-y-1 text-sm">
+            ${
+              steps.length
+                ? `<p class="text-zinc-600">${steps.map((step) => `• ${step}`).join("<br>")}</p>`
+                : ""
+            }
+          </div>
+        </div>
       </div>
     `;
+    card.querySelector(".product-img").addEventListener("click", () => {
+      const details = card.querySelector(".product-details");
+      const isHidden = details.classList.toggle("hidden");
+      const img = card.querySelector("img");
+      if (isHidden && img) {
+        const imgHeight = img.getBoundingClientRect().height || 0;
+        card.style.height = `${Math.ceil(imgHeight + 49)}px`;
+      } else {
+        card.style.height = "";
+      }
+      card.classList.toggle("overflow-hidden", isHidden);
+      card.classList.toggle("p-3", !isHidden);
+      card.classList.toggle("p-2", isHidden);
+      card.classList.toggle("space-y-2", !isHidden);
+      card.classList.toggle("space-y-0", isHidden);
+    });
     container.appendChild(card);
   });
 }
@@ -337,12 +453,12 @@ async function loadRules() {
   const rules = await fetchJSON("/api/rules");
   rules.forEach((rule) => {
     const item = document.createElement("div");
-    item.className = "p-3 rounded-xl bg-white border border-brand-100 shadow-sm";
+    item.className = "p-3 border border-gray-200 rounded-lg";
     item.innerHTML = `
       <div class="flex items-center justify-between">
         <h4 class="font-semibold"><span class="font-medium text-gray-500">Kural Türü:</span> ${rule.title} </h4>
       </div>
-      <p class="text-sm text-slate-600">${rule.description}</p>
+      <p class="text-sm text-zinc-600">${rule.description}</p>
     `;
     container.appendChild(item);
   });
@@ -369,10 +485,10 @@ async function loadQuickTips() {
         const question = dashIndex >= 0 ? text.slice(0, dashIndex).trim() : text.trim();
         const answer = dashIndex >= 0 ? text.slice(dashIndex + 1).trim() : (tip.solution || "").trim();
         const row = document.createElement("div");
-        row.className = "p-3 rounded-xl bg-white border border-brand-100 text-sm space-y-1 shadow-sm";
+        row.className = "p-3 rounded-xl bg-white border border-gray-200 text-sm space-y-1";
         row.innerHTML = `
           <p class="font-semibold">Sorun: ${question}</p>
-          <p class="text-slate-600">Cevap: ${answer}</p>
+          <p class="text-zinc-600">Cevap: ${answer}</p>
         `;
         container.appendChild(row);
       });
@@ -437,15 +553,15 @@ function renderEducationGroup(containerId, items = [], title) {
   if (!container) return;
   container.innerHTML = "";
   const header = document.createElement("p");
-  header.className = "text-xs uppercase tracking-wide text-slate-400";
+  header.className = "text-xs uppercase tracking-wide text-zinc-400";
   header.textContent = title;
   container.appendChild(header);
   items.forEach((item) => {
     const row = document.createElement("div");
-    row.className = "p-3 rounded-xl bg-white border border-brand-100 text-sm space-y-1 shadow-sm";
+    row.className = "p-3 rounded-xl bg-white border border-gray-200 text-sm space-y-1";
     row.innerHTML = `
       <p class="font-semibold">${item.title}</p>
-      <p class="text-slate-600">${formatTextWithLineBreaks(item.content)}</p>
+      <p class="text-zinc-600">${formatTextWithLineBreaks(item.content)}</p>
     `;
     container.appendChild(row);
   });
@@ -463,16 +579,16 @@ async function loadCampaigns() {
     const isActive = start <= now && end >= now;
     const badge = c.type.replace("_", " ");
     const card = document.createElement("div");
-    card.className = "p-3 rounded-xl bg-white border border-brand-100 space-y-1 shadow-sm";
+    card.className = "p-3 rounded-xl bg-white border border-gray-200 space-y-1 shadow-sm";
     card.innerHTML = `
       <div class="flex items-center justify-between">
         <h4 class="font-semibold">${c.title}</h4>
-        <span class="text-xs px-2 py-1 rounded-lg ${isActive ? "bg-emerald-100 text-emerald-800" : "bg-brand-50 text-slate-700"}">
+        <span class="text-xs px-2 py-1 rounded-lg ${isActive ? "bg-zinc-900 text-white" : "bg-gray-50 text-zinc-700"}">
           ${badge}
         </span>
       </div>
-      <p class="text-sm text-slate-600">${c.description}</p>
-      <p class="text-xs text-slate-500">${c.valid_from} - ${c.valid_to}</p>
+      <p class="text-sm text-zinc-600">${c.description}</p>
+      <p class="text-xs text-zinc-500">${c.valid_from} - ${c.valid_to}</p>
     `;
     container.appendChild(card);
   });
@@ -496,11 +612,11 @@ async function loadWorkshop() {
       const dateVal = typeof workshop.date === "string" ? workshop.date.slice(0, 10) : "";
       const dateLocation = [dateVal, workshop.location || ""].filter(Boolean).join(" • ");
       const card = document.createElement("div");
-      card.className = "p-3 rounded-xl bg-white border border-brand-100 space-y-1 shadow-sm";
+      card.className = "p-3 rounded-lg border border-gray-200 space-y-1";
       card.innerHTML = `
         <p class="font-semibold">${title}</p>
-        <p class="text-slate-600">${dateLocation || "Tarih paylaşılacak"}</p>
-        <p class="text-sm text-slate-500">${workshop.instructor || ""}</p>
+        <p class="text-zinc-600">${dateLocation || "Tarih paylaşılacak"}</p>
+        <p class="text-sm text-zinc-500">${workshop.instructor || ""}</p>
       `;
       container.appendChild(card);
     });
@@ -513,11 +629,25 @@ async function loadFaqs() {
   const faqs = await fetchJSON("/api/faqs");
   faqs.forEach((faq) => {
     const row = document.createElement("details");
-    row.className = "rounded-xl bg-white border border-brand-100 p-3 shadow-sm";
+    row.className = "rounded-md bg-stone-50 border border-gray-50 p-3 ";
     row.innerHTML = `
       <summary class="font-semibold cursor-pointer">${faq.question}</summary>
-      <p class="text-sm text-slate-600 mt-2">${faq.answer}</p>
+      <div class="faq-body" style="max-height:0; overflow:hidden; transition:max-height 240ms ease;">
+        <p class="text-sm text-zinc-600 mt-2">${faq.answer}</p>
+      </div>
     `;
+    const body = row.querySelector(".faq-body");
+    row.addEventListener("toggle", () => {
+      if (!body) return;
+      if (row.open) {
+        body.style.maxHeight = `${body.scrollHeight}px`;
+      } else {
+        body.style.maxHeight = `${body.scrollHeight}px`;
+        requestAnimationFrame(() => {
+          body.style.maxHeight = "0";
+        });
+      }
+    });
     container.appendChild(row);
   });
 }
@@ -562,7 +692,7 @@ async function loadVideos() {
   try {
     const videos = await fetchJSON("/api/videos");
     if (!videos.length) {
-      container.innerHTML = '<p class="text-sm text-slate-600">Henüz video yok.</p>';
+      container.innerHTML = '<p class="text-sm text-zinc-600">Henüz video yok.</p>';
       return;
     }
     container.innerHTML = "";
@@ -570,13 +700,13 @@ async function loadVideos() {
       const card = document.createElement("div");
       const title = video.title || "Video";
       const date = video.created_at ? new Date(video.created_at).toLocaleDateString("tr-TR") : "";
-      card.className = "rounded-2xl border border-brand-100 bg-white p-4 space-y-3 shadow-sm";
+      card.className = "rounded-lg border border-gray-200 bg-white p-4 space-y-3";
       card.innerHTML = `
         <div class="flex items-center justify-between">
           <h4 class="font-semibold">${title}</h4>
-          <span class="text-xs text-slate-500">${date}</span>
+          <span class="text-xs text-zinc-500">${date}</span>
         </div>
-        <div class="w-full aspect-video rounded-xl overflow-hidden bg-black">
+        <div class="w-full aspect-video rounded-lg overflow-hidden bg-black">
           <video controls class="w-full h-full object-cover">
             <source src="${video.video_url}" type="video/mp4">
           </video>
@@ -592,23 +722,23 @@ async function loadVideos() {
 async function loadExperts() {
   const table = document.getElementById("experts-table");
   if (!table) return;
-  table.innerHTML = '<tr><td class="py-3 text-sm text-slate-500" colspan="4">Yükleniyor...</td></tr>';
+  table.innerHTML = '<tr><td class="py-3 text-sm text-zinc-500" colspan="4">Yükleniyor...</td></tr>';
   try {
     const experts = await fetchJSON("/api/experts");
     if (!experts.length) {
-      table.innerHTML = '<tr><td class="py-3 text-sm text-slate-500" colspan="4">Henüz uzman yok.</td></tr>';
+      table.innerHTML = '<tr><td class="py-3 text-sm text-zinc-500" colspan="4">Henüz uzman yok.</td></tr>';
       return;
     }
     table.innerHTML = "";
     experts.forEach((expert) => {
       const row = document.createElement("tr");
-      row.className = "border-b border-brand-50";
+      row.className = "border-b border-gray-50";
       const avatarUrl = expert.avatar_url || "../static/img/user-logo.png";
       const statusLabel = formatExpertStatus(expert.expert_status);
       const phoneLabel = expert.phone || "-";
       row.innerHTML = `
         <td class="py-2 pr-4">
-          <div class="w-9 h-9 rounded-xl overflow-hidden border border-brand-100 bg-brand-50">
+          <div class="w-9 h-9 rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
             <img src="${avatarUrl}" alt="${toTitleCase(expert.name) || "Uzman"}" class="w-full h-full object-cover">
           </div>
         </td>
@@ -858,7 +988,7 @@ function spinner({ size = 32 } = {}) {
   return `
     <div class="flex justify-center py-8" aria-live="polite" aria-busy="true">
       <div
-        class="rounded-full border-solid border-slate-200 border-t-brand-500 animate-spin"
+        class="rounded-full border-solid border-gray-200 border-t-zinc-900 animate-spin"
         style="width:${size}px;height:${size}px;border-width:${stroke}px"
       ></div>
     </div>
@@ -891,13 +1021,13 @@ async function loadPhotos() {
   try {
     const photos = await fetchJSON("/api/photos");
     if (!photos.length) {
-      gallery.innerHTML = '<p class="text-sm text-slate-600 text-center py-4">Henüz fotoğraf yok.</p>';
+      gallery.innerHTML = '<p class="text-sm text-zinc-600 text-center py-4">Henüz fotoğraf yok.</p>';
       return;
     }
     gallery.innerHTML = "";
     photos.forEach((photo) => {
       const card = document.createElement("div");
-      card.className = "relative rounded-xl overflow-hidden border border-brand-100 shadow-sm bg-white";
+      card.className = "relative rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-white";
       card.innerHTML = `
         <img src="${photo.image_url}" alt="İşlem fotoğrafı" class="w-full h-32 object-cover">
         <button type="button" data-photo-delete class="absolute top-2 right-2 z-10 px-2.5 py-1.5 rounded-lg bg-red-500 text-xs font-semibold text-white border border-red-600 shadow">
@@ -910,7 +1040,7 @@ async function loadPhotos() {
         }
         ${
           photo.feedback
-            ? `<div class="p-2 text-xs bg-brand-50 text-slate-700">Feedback: ${photo.feedback}</div>`
+            ? `<div class="p-2 text-xs bg-gray-50 text-zinc-700">Feedback: ${photo.feedback}</div>`
             : ""
         }
       `;
@@ -923,7 +1053,7 @@ async function loadPhotos() {
             await fetchJSON(`/api/photos/${photo.id}`, { method: "DELETE" });
             card.remove();
             if (!gallery.querySelector("div")) {
-              gallery.innerHTML = '<p class="text-sm text-slate-600 text-center py-4">Henüz fotoğraf yok.</p>';
+              gallery.innerHTML = '<p class="text-sm text-zinc-600 text-center py-4">Henüz fotoğraf yok.</p>';
             }
             showToast("Fotoğraf silindi.", { type: "success" });
             await loadPhotos();
@@ -973,32 +1103,35 @@ function renderFeed() {
   }
 
   if (!photos.length) {
-    feed.innerHTML = '<p class="text-sm text-slate-600">Henüz paylaşım yok.</p>';
+    feed.innerHTML = '<p class="text-sm text-zinc-600">Henüz paylaşım yok.</p>';
     return;
   }
 
   photos.forEach((photo) => {
     const card = document.createElement("div");
-    card.className = "rounded-2xl border border-brand-100 shadow-sm bg-white overflow-hidden";
+    card.className = "rounded-lg border border-gray-200 shadow-sm bg-white overflow-hidden";
     const date = photo.created_at ? new Date(photo.created_at).toLocaleDateString("tr-TR") : "";
-    const displayName = toTitleCase(photo.student_name || "Uzman");
-    const initials = displayName.slice(0, 2).toUpperCase();
+      const displayName = toTitleCase(photo.student_name || "Uzman");
+      const initials = displayName.slice(0, 2).toUpperCase();
+      const avatarUrl = photo.student_avatar_url || photo.avatar_url || "../static/img/user-logo.png";
     const winnerBadge =
       photo.is_monthly_winner
         ? '<span class="px-3 py-1 rounded-full bg-green-100 text-green-800 text-xs font-semibold border border-green-200">Bu Ayın Kazananı</span>'
         : "";
     card.innerHTML = `
       <div class="flex items-center justify-between gap-3 p-3">
-        <div class="flex items-center gap-3">
-          <div class="h-10 w-10 rounded-full bg-brand-50 border border-brand-100 flex items-center justify-center text-sm font-semibold text-brand-700">${initials}</div>
-          <div>
-            <p class="font-semibold text-sm text-slate-800">${displayName}</p>
-            <p class="text-xs text-slate-500">${date}</p>
+          <div class="flex items-center gap-3">
+            <div class="h-10 w-10 rounded-full overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center text-sm font-semibold text-zinc-900">
+              <img src="${avatarUrl}" alt="${displayName}" class="h-full w-full object-cover" onerror="this.style.display='none'; this.parentElement.textContent='${initials}';" />
+            </div>
+            <div>
+              <p class="font-semibold text-sm text-zinc-800">${displayName}</p>
+              <p class="text-xs text-zinc-500">${date}</p>
+            </div>
           </div>
-        </div>
         ${winnerBadge}
       </div>
-      <div class="bg-slate-100 relative">
+      <div class="bg-gray-100 relative">
         ${
           photo.is_monthly_winner
             ? '<span class="absolute top-3 left-3 px-3 py-1 rounded-full bg-green-500 shadow text-white text-xs font-semibold shadow">Kazanan</span>'
@@ -1032,11 +1165,11 @@ function renderFeed() {
         "text-sm",
         "transition",
         "duration-150",
-        isActive ? "bg-brand-100 border-brand-200 text-brand-700" : "bg-white border-brand-100 text-slate-700 hover:border-brand-200",
+        isActive ? "bg-gray-100 border-gray-300 text-zinc-900" : "bg-white border-gray-200 text-zinc-700 hover:border-gray-300",
       ].join(" ");
       btn.innerHTML = `
         <span>${reaction.label}</span>
-        <span class="text-xs text-slate-500">${count}</span>
+        <span class="text-xs text-zinc-500">${count}</span>
       `;
       btn.addEventListener("click", async () => {
         btn.disabled = true;
@@ -1054,17 +1187,17 @@ function renderFeed() {
     const feedbacks = Array.isArray(photo.feedbacks) ? photo.feedbacks : [];
     if (feedbacks.length) {
       const header = document.createElement("p");
-      header.className = "text-xs uppercase tracking-wide text-slate-400";
+      header.className = "text-xs uppercase tracking-wide text-zinc-400";
       header.textContent = "Feedbackler";
       feedbackList.appendChild(header);
       feedbacks.forEach((fb) => {
         const row = document.createElement("div");
         const fbDate = fb.created_at ? new Date(fb.created_at).toLocaleDateString("tr-TR") : "";
-        row.className = "p-2 rounded-lg bg-brand-50 border border-brand-100";
+        row.className = "p-2 rounded-lg bg-gray-50 border border-gray-200";
         const feedbackName = toTitleCase(fb.student_name || "Uzman");
         row.innerHTML = `
-          <p class="text-xs font-semibold text-slate-700">${feedbackName} <span class="text-[11px] text-slate-400">${fbDate}</span></p>
-          <p class="text-sm text-slate-700">${fb.feedback}</p>
+          <p class="text-xs font-semibold text-zinc-700">${feedbackName} <span class="text-[11px] text-zinc-400">${fbDate}</span></p>
+          <p class="text-sm text-zinc-700">${fb.feedback}</p>
         `;
         feedbackList.appendChild(row);
       });
@@ -1074,11 +1207,11 @@ function renderFeed() {
       feedbackWrapper.className = "space-y-2";
       const feedbackInputId = `feedback-${photo.id}`;
       feedbackWrapper.innerHTML = `
-        <label for="${feedbackInputId}" class="text-xs text-slate-500">Feedback bırak</label>
+        <label for="${feedbackInputId}" class="text-xs text-zinc-500">Feedback bırak</label>
         <div class="flex gap-2">
           <input id="${feedbackInputId}" type="text" maxlength="280" value=""
-            class="flex-1 rounded-lg border border-brand-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" placeholder="Gözlemini yaz">
-          <button type="button" class="px-3 py-2 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700">Gönder</button>
+            class="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400" placeholder="Gözlemini yaz">
+          <button type="button" class="px-3 py-2 rounded-lg bg-zinc-900 text-white text-sm font-semibold hover:bg-zinc-800">Gönder</button>
         </div>
       `;
       const sendBtn = feedbackWrapper.querySelector("button");
@@ -1106,7 +1239,7 @@ function renderFeed() {
         "px-3",
         "py-2",
         "rounded-lg",
-        photo.is_monthly_winner ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-white border border-brand-100 text-slate-700 hover:border-brand-200",
+        photo.is_monthly_winner ? "bg-zinc-900 text-white border border-zinc-900" : "bg-white border border-gray-200 text-zinc-700 hover:border-gray-300",
         "text-sm",
         "font-semibold",
         "transition",

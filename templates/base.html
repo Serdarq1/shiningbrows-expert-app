@@ -8,6 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Shining Brows Uzman Portalı</title>
   <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+  <link rel="icon" href="{{ url_for('static', filename='img/sb-logo.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/sb-logo.png') }}">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -15,7 +16,7 @@
       theme: {
         extend: {
           fontFamily: {
-            display: ['"DM Sans"', 'ui-sans-serif', 'system-ui'],
+            display: ['"Plus Jakarta Sans"', '"Inter"', 'ui-sans-serif', 'system-ui'],
           },
           colors: {
             brand: {
@@ -33,10 +34,10 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   {% block head %}{% endblock %}
 </head>
-<body class="bg-gradient-to-b from-brand-50 via-white to-brand-100 min-h-screen text-slate-900 font-display">
+<body class="bg-white min-h-screen text-zinc-900 font-display">
   <div class="min-h-screen">
     {% block content %}{% endblock %}
   </div>

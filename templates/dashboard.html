@@ -3,30 +3,35 @@
 <script defer src="{{ url_for('static', filename='js/app.js') }}"></script>
 {% endblock %}
 {% block content %}
-<button id="sidebar-toggle" class="fixed top-4 left-4 z-40 bg-white/90 border border-brand-100 rounded-2xl px-3 py-2 shadow-lg text-slate-800 font-semibold flex items-center gap-2 md:hidden">
-  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-    <path d="M4 7h16M4 12h16M4 17h16"></path>
-  </svg>
-  <span class="text-xs text-slate-500">Menü</span>
-</button>
-<div id="sidebar-overlay" class="fixed inset-0 bg-black/30 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-300 z-30 md:hidden"></div>
-<aside id="sidebar" class="fixed top-0 left-0 h-full w-64 bg-white border-r border-brand-100 shadow-xl transform -translate-x-full md:translate-x-0 transition-transform duration-300 z-40">
+<div id="sidebar-overlay" class="fixed inset-0 bg-black/30 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-300 z-30"></div>
+<aside id="sidebar" class="fixed top-0 left-0 h-full w-64 bg-white border-r border-gray-200 shadow-xl transform -translate-x-full transition-transform duration-300 z-40">
   <div class="px-4 py-6 space-y-6">
     <div class="flex items-center gap-3">
-      <div class="w-12 h-12 rounded-2xl bg-brand-100 flex items-center justify-center text-xl"><img src="../static/img/logo-transparent.png" /></div>
-      <div>
-        <p class="text-xs uppercase tracking-[0.2em] text-brand-500">SHINING BROWS</p>
-        <p class="text-sm text-slate-700">Uzman Paneli</p>
+      <div class="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden text-xl">
+        <img src="../static/img/logo-transparent.png" alt="Profil görseli" class="w-full h-full object-cover" id="sidebar-profile-logo" />
+      </div>
+      <div class="space-y-1">
+        <p class="text-sm font-semibold text-zinc-800" id="sidebar-student-name">Uzman</p>
+        <p class="text-xs text-zinc-600" id="sidebar-expert-id">Uzman ID</p>
+        <p class="text-xs text-zinc-600">Workshop Tamamlama: <span id="sidebar-certificate-date">-</span></p>
       </div>
     </div>
     <div class="flex flex-col gap-3">
-      <button class="nav-btn" data-target="dashboard-section" title="Panel">
+      <button class="nav-btn" data-target="panel-section" title="Panel">
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 11L12 3l9 8"></path>
           <path d="M5 9v11h14V9"></path>
           <path d="M9 21V12h6v9"></path>
         </svg>
         <span class="text-sm font-medium">Panel</span>
+      </button>
+      <button class="nav-btn" data-target="dashboard-section" title="Hızlı Bilgiler & Kısıtlamalar ve Kurallar">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"></circle>
+          <path d="M12 8h.01"></path>
+          <path d="M11 12h2v4h-2z"></path>
+        </svg>
+        <span class="text-sm font-medium text-left w-full">Hızlı Bilgiler & Kısıtlamalar ve Kurallar</span>
       </button>
       <button class="nav-btn" data-target="profile-section" title="Profil">
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -101,54 +106,175 @@
       </button>
     </div>
    <form action="{{url_for('logout')}}" method="post">
-     <button class="bg-pink-500 text-white font-medium text-sm px-3 py-2 rounded-md">Çıkış Yap</button>
+     <button class="bg-zinc-900 text-white font-medium text-sm px-3 py-2 rounded-md">Çıkış Yap</button>
    </form>
   </div>
 </aside>
 
-<div class="max-w-5xl mx-auto md:pl-72 px-4 pt-6 pb-16 space-y-6">
-  <header class="bg-gradient-to-br from-brand-500 to-brand-400 rounded-3xl p-5 shadow-xl text-white">
-    <div class="flex items-center gap-3">
-      <div class="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center overflow-hidden">
-        <img src="../static/img/sb-logo.png" alt="Profil Görseli" class="w-full h-full object-cover" id="profile-logo">
-      </div>
-      <div>
-        <p class="text-xs uppercase tracking-[0.2em] text-brand-50">SHINING BROWS</p>
-        <h1 class="text-xl font-semibold" id="student-name">Uzman</h1>
-        <p class="text-sm text-brand-50" id="expert-id">Uzman ID</p>
-        <p class="text-xs">Workshop Tamamlama: <span id="certificate-date">-</span></p>
+<div class="max-w-6xl mx-auto md:pl-72 px-4 md:px-6 lg:px-10 pt-6 pb-16 space-y-6">
+  <nav class="flex items-center justify-between px-4 py-3">
+    <div class="relative">
+      <button id="notification-btn" class="flex h-12 w-12 items-center justify-center rounded-full text-zinc-800" type="button" aria-label="Bildirimler" data-unread="0">
+        <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"></path>
+          <path d="M9 19a3 3 0 0 0 6 0"></path>
+        </svg>
+      </button>
+      <div id="notification-popover" class="absolute left-0 top-full -mt-0.5 hidden border border-gray-200 bg-white px-3 py-2 text-xs text-zinc-700">
+        Bir bildirim bulunmamaktadır.
       </div>
     </div>
-  </header>
+    <div class="flex h-16 w-16 items-center justify-center">
+      <img src="../static/img/logo-transparent.png" alt="Shining Brows" class="h-16 w-16 object-contain" />
+    </div>
+    <button id="sidebar-toggle" class="flex h-12 w-12 items-center justify-center rounded-full text-zinc-800" type="button" aria-label="Menü">
+      <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M4 7h16M4 12h16M4 17h16"></path>
+      </svg>
+    </button>
+  </nav>
 
-  <section id="dashboard-section" class="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
-    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow hidden">
+  <section id="panel-section" class="space-y-4 hidden">
+    <header class="bg-gradient-to-br from-zinc-900 to-zinc-800 rounded-3xl p-5 shadow-xl text-white md:max-w-4xl md:mx-auto">
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-lg bg-white/20 flex items-center justify-center overflow-hidden">
+          <img src="../static/img/sb-logo.png" alt="Profil Görseli" class="w-full h-full object-cover" id="profile-logo">
+        </div>
+        <div>
+          <p class="text-xs uppercase tracking-[0.2em] text-zinc-100">SHINING BROWS</p>
+          <h1 class="text-xl font-semibold" id="student-name">Uzman</h1>
+          <p class="text-sm text-zinc-100" id="expert-id">Uzman ID</p>
+          <p class="text-xs">Workshop Tamamlama: <span id="certificate-date">-</span></p>
+        </div>
+      </div>
+    </header>
+    <div class="flex flex-wrap justify-center gap-4 max-w-[360px] md:max-w-[560px] lg:max-w-[720px] mx-auto">
+      <button class="panel-shortcut flex flex-col items-center gap-1 p-4 bg-gray-100 rounded-full w-20 h-20 transition duration-200 hover:-translate-y-0.5" data-target="dashboard-section">
+        <span class="flex h-12 w-12 items-center justify-center rounded-full bg-transparent">
+          <svg class="h-6 w-6 text-zinc-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 2L3 14h7l-1 8 10-12h-7z"></path>
+          </svg>
+        </span>
+        <span class="text-center text-[10px] font-semibold text-zinc-900">Hızlı Bilgiler</span>
+      </button>
+      <button class="panel-shortcut flex flex-col items-center gap-1 p-4 bg-gray-100 rounded-full w-20 h-20 transition duration-200 hover:-translate-y-0.5" data-target="profile-section">
+        <span class="flex h-12 w-12 items-center justify-center rounded-full bg-transparent">
+          <svg class="h-6 w-6 text-zinc-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21a8 8 0 1 0-16 0"></path>
+            <circle cx="12" cy="8" r="4"></circle>
+          </svg>
+        </span>
+        <span class="text-center text-[10px] font-semibold text-zinc-900">Profil</span>
+      </button>
+      <button class="panel-shortcut flex flex-col items-center gap-1 p-4 bg-gray-100 rounded-full w-20 h-20 transition duration-200 hover:-translate-y-0.5" data-target="feed-section">
+        <span class="flex h-12 w-12 items-center justify-center rounded-full bg-transparent">
+          <svg class="h-6 w-6 text-zinc-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 10s1.5-2 5-2 5 2 5 2"></path>
+            <path d="M7 14s1.5 2 5 2 5-2 5-2"></path>
+            <circle cx="12" cy="12" r="9"></circle>
+          </svg>
+        </span>
+        <span class="text-center text-[10px] font-semibold text-zinc-900">Uzman Akışı</span>
+      </button>
+      <button class="panel-shortcut flex flex-col items-center gap-1 p-4 bg-gray-100 rounded-full w-20 h-20 transition duration-200 hover:-translate-y-0.5" data-target="products-section">
+        <span class="flex h-12 w-12 items-center justify-center rounded-full bg-transparent">
+          <svg class="h-6 w-6 text-zinc-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 3h6"></path>
+            <path d="M10 3v4"></path>
+            <rect x="7" y="7" width="10" height="14" rx="2"></rect>
+            <path d="M9 11h6"></path>
+          </svg>
+        </span>
+        <span class="text-center text-[10px] font-semibold text-zinc-900">Ürünler</span>
+      </button>
+      <button class="panel-shortcut flex flex-col items-center gap-1 p-4 bg-gray-100 rounded-full w-20 h-20 transition duration-200 hover:-translate-y-0.5" data-target="photos-section">
+        <span class="flex h-12 w-12 items-center justify-center rounded-full bg-transparent">
+          <svg class="h-6 w-6 text-zinc-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7h3l2-3h8l2 3h3v12H3Z"></path>
+            <circle cx="12" cy="13" r="3"></circle>
+          </svg>
+        </span>
+        <span class="text-center text-[10px] font-semibold text-zinc-900">Fotoğraflar</span>
+      </button>
+      <button class="panel-shortcut flex flex-col items-center gap-1 p-4 bg-gray-100 rounded-full w-20 h-20 transition duration-200 hover:-translate-y-0.5" data-target="experts-section">
+        <span class="flex h-12 w-12 items-center justify-center rounded-full bg-transparent">
+          <svg class="h-6 w-6 text-zinc-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21a5 5 0 0 0-10 0"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+            <path d="M22 21a5 5 0 0 0-6-4.9"></path>
+            <path d="M18 9a3 3 0 1 0-2-5.6"></path>
+          </svg>
+        </span>
+        <span class="text-center text-[10px] font-semibold text-zinc-900">Uzmanlar</span>
+      </button>
+      <button class="panel-shortcut flex flex-col items-center gap-1 p-4 bg-gray-100 rounded-full w-20 h-20 transition duration-200 hover:-translate-y-0.5" data-target="campaigns-section">
+        <span class="flex h-12 w-12 items-center justify-center rounded-full bg-transparent">
+          <svg class="h-6 w-6 text-zinc-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"></circle>
+            <circle cx="12" cy="12" r="5"></circle>
+            <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"></circle>
+          </svg>
+        </span>
+        <span class="text-center text-[10px] font-semibold text-zinc-900">Kampanyalar</span>
+      </button>
+      <button class="panel-shortcut flex flex-col items-center gap-1 p-4 bg-gray-100 rounded-full w-20 h-20 transition duration-200 hover:-translate-y-0.5" data-target="books-section">
+        <span class="flex h-12 w-12 items-center justify-center rounded-full bg-transparent">
+          <svg class="h-6 w-6 text-zinc-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H18a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H6.5A2.5 2.5 0 0 0 4 19.5z"></path>
+            <path d="M6.5 3v16"></path>
+          </svg>
+        </span>
+        <span class="text-center text-[10px] font-semibold text-zinc-900">E-Kitap</span>
+      </button>
+      <button class="panel-shortcut flex flex-col items-center gap-1 p-4 bg-gray-100 rounded-full w-20 h-20 transition duration-200 hover:-translate-y-0.5" data-target="videos-section">
+        <span class="flex h-12 w-12 items-center justify-center rounded-full bg-transparent">
+          <svg class="h-6 w-6 text-zinc-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="5" width="14" height="14" rx="2"></rect>
+            <path d="M17 9l4-2v10l-4-2z"></path>
+          </svg>
+        </span>
+        <span class="text-center text-[10px] font-semibold text-zinc-900">Videolar</span>
+      </button>
+      <button class="panel-shortcut flex flex-col items-center gap-1 p-4 bg-gray-100 rounded-full w-20 h-20 transition duration-200 hover:-translate-y-0.5" data-target="support-section">
+        <span class="flex h-12 w-12 items-center justify-center rounded-full bg-transparent">
+          <svg class="h-6 w-6 text-zinc-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 7h8"></path>
+            <path d="M9 11h8"></path>
+            <path d="M9 15h5"></path>
+            <path d="M7 5h10a2 2 0 0 1 2 2v13l-4-3H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"></path>
+          </svg>
+        </span>
+        <span class="text-center text-[10px] font-semibold text-zinc-900">Destek</span>
+      </button>
+    </div>
+  </section>
+
+  <section id="dashboard-section" class="space-y-4 md:grid md:grid-cols-2 md:gap-6 lg:gap-8 md:space-y-0 md:justify-items-center md:[&>div]:w-full">
+    <div class="bg-white border border-gray-200 rounded-lg p-4 shadow hidden">
       <div class="flex items-center justify-between">
         <div>
-          <p class="text-sm text-slate-600">Dijital Sertifika</p>
+          <p class="text-sm text-zinc-600">Dijital Sertifika</p>
           <h2 class="text-lg font-semibold" id="workshop-name">Atölye</h2>
-          <p class="text-xs text-slate-500">Tamamlama: <span id="certificate-date">-</span></p>
+          <p class="text-xs text-zinc-500">Tamamlama: <span id="certificate-date">-</span></p>
         </div>
         <span id="certificate-status"
-              class="text-xs px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+              class="text-xs px-3 py-1 rounded-full bg-zinc-900 text-white border border-zinc-900">
           Aktif
         </span>
       </div>
     </div>
 
-    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-2">
+    <div class="bg-white border border-gray-200 rounded-lg p-4 shadow space-y-2">
       <div class="flex items-center gap-2">
-        <span class="text-lg">⚡</span>
         <h3 class="font-semibold">Hızlı Bilgiler</h3>
       </div>
       <input id="quick-search" placeholder="Sorun ara (örn: henna)"
-             class="w-full rounded-xl bg-white border border-brand-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
+             class="w-full rounded-md bg-white border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400">
       <div id="quick-list" class="space-y-3"></div>
     </div>
 
-    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
+    <div class="p-4 space-y-3">
       <div class="flex items-center gap-2">
-        <span class="text-lg">📋</span>
         <h3 class="font-semibold">Kurallar & Kısıtlamalar</h3>
       </div>
       <div id="rule-list" class="space-y-3"></div>
@@ -156,26 +282,26 @@
 
   </section>
 
-  <section id="profile-section" class="space-y-4 hidden md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
-    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
+  <section id="profile-section" class="space-y-4 hidden md:grid md:grid-cols-2 md:gap-6 lg:gap-8 md:space-y-0 md:justify-items-center md:[&>div]:w-full">
+    <div class="p-4 space-y-3">
       <div class="flex items-center gap-2">
         <h3 class="font-semibold">Profil Fotoğrafı</h3>
       </div>
       <div class="flex items-center gap-4">
-        <div class="w-20 h-20 rounded-2xl bg-brand-50 border border-brand-100 overflow-hidden flex items-center justify-center">
+        <div class="w-20 h-20 rounded-lg bg-gray-50 border border-gray-200 overflow-hidden flex items-center justify-center">
           <img id="profile-avatar" src="../static/img/logo-transparent.png" alt="Profil fotoğrafı" class="w-full h-full object-cover">
         </div>
         <form id="avatar-form" class="flex-1 space-y-2">
           <input name="avatar" type="file" accept="image/*"
-                 class="w-full text-sm text-slate-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand-500 file:text-white file:font-semibold">
-          <button type="submit" class="w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold shadow-md">
+                 class="w-full text-sm text-zinc-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-zinc-900 file:text-white file:font-semibold">
+          <button type="submit" class="w-full py-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-900 text-white font-semibold shadow-md">
             Fotoğrafı Güncelle
           </button>
         </form>
       </div>
     </div>
 
-    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
+    <div class="p-4 space-y-3">
       <div class="flex items-center gap-2">
         <h3 class="font-semibold">Profil Ayarları</h3>
       </div>
@@ -185,38 +311,37 @@
       </div>
       <form id="profile-form" class="space-y-3">
         <input id="profile-phone" name="phone" placeholder="Telefon numarası"
-               class="w-full rounded-xl bg-white border border-brand-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
-        <button type="submit" class="w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold shadow-md">
+               class="w-full rounded-lg bg-white border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400">
+        <button type="submit" class="w-full py-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-900 text-white font-semibold shadow-md">
           Kaydet
         </button>
       </form>
-      <p id="profile-success" class="hidden text-sm text-emerald-600">Profil güncellendi.</p>
+      <p id="profile-success" class="hidden text-sm text-zinc-700">Profil güncellendi.</p>
     </div>
 
-    <div id="password-card" class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
+    <div id="password-card" class="p-4 space-y-3">
       <div class="flex items-center gap-2">
-        <span class="text-lg">🔒</span>
         <h3 class="font-semibold">Şifreni Oluştur</h3>
       </div>
-      <p id="password-hint" class="text-sm text-slate-600">Güvenlik için bir şifre belirleyin. Şu an yalnızca ad-soyad ile giriş yapılmaktadır.</p>
+      <p id="password-hint" class="text-sm text-zinc-600">Güvenlik için bir şifre belirleyin. Şu an yalnızca ad-soyad ile giriş yapılmaktadır.</p>
       <form id="password-form" class="space-y-3">
         <div class="relative">
           <input id="new-password" name="new_password" type="password" minlength="6" required placeholder="En az 6 karakter"
-                 class="w-full rounded-xl bg-white border border-brand-100 px-3 py-2 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
-          <button type="button" id="password-toggle" class="absolute inset-y-0 right-2 flex items-center px-2 text-slate-500 text-sm hover:text-slate-700">
-            👁️
-          </button>
+                 class="w-full rounded-lg bg-white border border-gray-200 px-3 py-2 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400">
+        <button type="button" id="password-toggle" class="absolute inset-y-0 right-2 flex items-center px-2 text-zinc-500 text-sm hover:text-zinc-700">
+          Göster
+        </button>
         </div>
-        <button type="submit" class="w-full py-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold shadow-md">
+        <button type="submit" class="w-full py-3 rounded-lg bg-zinc-900 hover:bg-zinc-900 text-white font-semibold shadow-md">
           Şifreyi Kaydet
         </button>
       </form>
-      <p id="password-success" class="hidden text-sm text-emerald-600">Şifre güncellendi!</p>
+      <p id="password-success" class="hidden text-sm text-zinc-700">Şifre güncellendi!</p>
     </div>
   </section>
 
-  <section id="products-section" class="w-full space-y-4 hidden md:grid md:grid-cols-1 md:gap-4 md:space-y-0">
-    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
+  <section id="products-section" class="w-full space-y-4 hidden md:grid md:grid-cols-1 md:gap-6 lg:gap-8 md:space-y-0 md:justify-items-center md:[&>div]:w-full">
+    <div class=" p-4 space-y-3">
       <div class="flex items-center gap-2">
         <h3 class="font-semibold">Ürün Bilgileri</h3>
       </div>
@@ -224,16 +349,15 @@
     </div>
   </section>
 
-  <section id="photos-section" class="space-y-4 hidden md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
-    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
+  <section id="photos-section" class="space-y-4 hidden md:grid md:grid-cols-2 md:gap-6 lg:gap-8 md:space-y-0 md:justify-items-center md:[&>div]:w-full">
+    <div class=" border border-gray-200 rounded-lg p-4 space-y-3">
       <div class="flex items-center gap-2">
-        <span class="text-lg">📸</span>
         <h3 class="font-semibold">İşlem Fotoğraflarım</h3>
       </div>
       <form id="photo-form" class="space-y-3">
         <input type="file" name="photo" accept="image/*"
-               class="w-full text-sm text-slate-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand-500 file:text-white file:font-semibold">
-        <button type="submit" class="w-full py-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold shadow-md">
+               class="w-full text-sm text-zinc-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-zinc-900 file:text-white file:font-semibold">
+        <button type="submit" class="w-full py-3 rounded-lg bg-zinc-900 hover:bg-zinc-900 text-white font-semibold shadow-md">
           Fotoğraf Yükle
         </button>
       </form>
@@ -241,20 +365,19 @@
     </div>
   </section>
 
-  <section id="feed-section" class="space-y-4 hidden">
-    <div class="bg-white border border-brand-100 rounded-3xl shadow p-4 md:p-6 space-y-4 md:max-w-3xl md:mx-auto">
+  <section id="feed-section" class="space-y-4 hidden md:max-w-5xl md:mx-auto">
+    <div class=" p-4 md:p-6 space-y-4 md:max-w-3xl md:mx-auto">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <span class="text-lg">🌐</span>
-          <h3 class="font-semibold">Uzman Akışı</h3>
+        <h3 class="font-semibold">Uzman Akışı</h3>
         </div>
-        <p class="text-xs text-slate-500">Kaydırarak diğer uzmanların paylaşımlarını gör</p>
+        <p class="text-xs text-zinc-500">Kaydırarak diğer uzmanların paylaşımlarını gör</p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <button id="filter-winner-btn" class="px-3 py-2 rounded-xl border border-brand-100 bg-white text-sm font-semibold text-slate-700transition hover:bg-pink-500 hover:border-pink-700 hover:text-white transition">
+        <button id="filter-winner-btn" class="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-zinc-700transition hover:bg-zinc-900 hover:border-zinc-900 hover:text-white transition">
           Sadece Kazananı Görüntüle
         </button>
-        <button id="pin-winner-btn" class="px-3 py-2 rounded-xl border border-brand-100 bg-white text-sm font-semibold text-slate-700 transition hover:bg-pink-500 hover:border-pink-700 hover:text-white transition">
+        <button id="pin-winner-btn" class="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-zinc-700 transition hover:bg-zinc-900 hover:border-zinc-900 hover:text-white transition">
           Kazananı Üste Sabitle
         </button>
       </div>
@@ -262,140 +385,134 @@
     </div>
   </section>
 
-  <section id="campaigns-section" class="space-y-4 hidden md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
-    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
+  <section id="campaigns-section" class="space-y-4 hidden md:grid md:grid-cols-2 md:gap-6 lg:gap-8 md:space-y-0 md:justify-items-center md:[&>div]:w-full">
+    <div class="border border-gray-200 rounded-lg p-4 space-y-3">
       <div class=" items-center gap-2">
-        <span class="text-lg">🎁</span>
         <h3 class="font-semibold">Kampanyalar</h3>
         <p class="text-gray-500 mt-2">Şu anda geçerli bir kampanya bulunmuyor.</p>
       </div>
       <div id="campaign-list" class="space-y-3"></div>
     </div>
-    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
+    <div class="border border-gray-200 rounded-lg p-4 space-y-3">
       <div class="flex items-center gap-2">
-        <span class="text-lg">📅</span>
         <h3 class="font-semibold">Sonraki Workshop</h3>
       </div>
-      <div id="next-workshop" class="text-sm text-slate-700 space-y-1"></div>
+      <div id="next-workshop" class="text-sm text-zinc-700 space-y-1"></div>
     </div>
 
-    <div id="workshop-admin-card" class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3 hidden">
+    <div id="workshop-admin-card" class="bg-white border border-gray-200 rounded-lg p-4 shadow space-y-3 hidden">
       <div class="flex items-center gap-2">
-        <span class="text-lg">🛠️</span>
         <h3 class="font-semibold">Yeni Workshop Ekle (Admin)</h3>
       </div>
       <form id="workshop-form" class="space-y-2">
         <input name="workshop_title" required placeholder="Workshop başlığı"
-               class="w-full rounded-xl bg-white border border-brand-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
+               class="w-full rounded-lg bg-white border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400">
         <input name="workshop_date" type="date" required
-               class="w-full rounded-xl bg-white border border-brand-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
+               class="w-full rounded-lg bg-white border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400">
         <input name="workshop_location" placeholder="Konum"
-               class="w-full rounded-xl bg-white border border-brand-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
+               class="w-full rounded-lg bg-white border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400">
         <input name="workshop_instructor" placeholder="Eğitmen"
-               class="w-full rounded-xl bg-white border border-brand-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
-        <button type="submit" class="w-full py-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold shadow-md">
+               class="w-full rounded-lg bg-white border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400">
+        <button type="submit" class="w-full py-3 rounded-lg bg-zinc-900 hover:bg-zinc-900 text-white font-semibold shadow-md">
           Kaydet
         </button>
       </form>
-      <p id="workshop-success" class="hidden text-sm text-emerald-600">Yeni workshop kaydedildi.</p>
+      <p id="workshop-success" class="hidden text-sm text-zinc-700">Yeni workshop kaydedildi.</p>
     </div>
 
   </section>
 
-  <section id="experts-section" class="space-y-4 hidden">
-    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
+  <section id="experts-section" class="space-y-4 hidden md:max-w-5xl md:mx-auto">
+    <div class="border border-gray-200 rounded-lg p-4 space-y-3">
       <div class="flex items-center gap-2">
-        <span class="text-lg">👥</span>
         <h3 class="font-semibold">Uzmanlar</h3>
       </div>
       <div class="overflow-x-auto">
         <table class="min-w-full text-sm">
-          <thead class="text-slate-500">
-            <tr class="border-b border-brand-100">
+          <thead class="text-zinc-500">
+            <tr class="border-b border-gray-200">
               <th class="text-left py-2 pr-4 font-semibold">Fotoğraf</th>
               <th class="text-left py-2 pr-4 font-semibold">Ad Soyad</th>
               <th class="text-left py-2 pr-4 font-semibold">Uzmanlık</th>
               <th class="text-left py-2 pr-4 font-semibold">Telefon</th>
             </tr>
           </thead>
-          <tbody id="experts-table" class="text-slate-700"></tbody>
+          <tbody id="experts-table" class="text-zinc-700"></tbody>
         </table>
       </div>
     </div>
   </section>
 
-  <section id="books-section" class="space-y-4 hidden">
-    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
+  <section id="books-section" class="space-y-4 hidden md:max-w-5xl md:mx-auto">
+    <div class="border border-gray-200 rounded-lg p-4 space-y-3">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-2">
-          <span class="text-lg">📖</span>
           <div>
             <h3 class="font-semibold">E-Kitap</h3>
-            <p class="text-xs text-slate-500">Mobilde tam ekran izlemek için indir kısmına tıklayın.</p>
+            <p class="text-xs text-zinc-500">Mobilde tam ekran izlemek için indir kısmına tıklayın.</p>
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <a id="book-download" href="#" target="_blank" rel="noopener" class="hidden text-xs md:text-sm px-3 py-2 rounded-lg bg-brand-500 text-white font-semibold">PDF indir</a>
+          <a id="book-download" href="#" target="_blank" rel="noopener" class="hidden text-xs md:text-sm px-3 py-2 rounded-lg bg-zinc-900 text-white font-semibold">PDF indir</a>
         </div>
       </div>
-      <div class="relative rounded-2xl border border-brand-100 overflow-hidden bg-slate-50 shadow-inner">
-        <div id="book-viewer" class="relative w-full aspect-[3/4] md:aspect-[16/10] flex items-center justify-center text-slate-500 text-sm">
+      <div class="relative rounded-lg border border-gray-200 overflow-hidden bg-gray-50 shadow-inner">
+        <div id="book-viewer" class="relative w-full aspect-[3/4] md:aspect-[16/10] flex items-center justify-center text-zinc-500 text-sm">
           PDF yüklenmedi.
         </div>
       </div>
       <div id="book-admin-card" class="hidden space-y-2">
-        <p class="text-sm text-slate-600">PDF kitabı yüklemek için dosyayı seçin.</p>
+        <p class="text-sm text-zinc-600">PDF kitabı yüklemek için dosyayı seçin.</p>
         <form id="book-form" class="space-y-2">
           <input name="book_title" placeholder="Kitap başlığı (isteğe bağlı)"
-                 class="w-full rounded-xl bg-white border border-brand-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
+                 class="w-full rounded-lg bg-white border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400">
           <input name="book_file" type="file" accept="application/pdf"
-                 class="w-full text-sm text-slate-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand-500 file:text-white file:font-semibold">
-          <button type="submit" class="w-full py-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold shadow-md">
+                 class="w-full text-sm text-zinc-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-zinc-900 file:text-white file:font-semibold">
+          <button type="submit" class="w-full py-3 rounded-lg bg-zinc-900 hover:bg-zinc-900 text-white font-semibold shadow-md">
             PDF Yükle
           </button>
         </form>
-        <p id="book-success" class="hidden text-sm text-emerald-600">PDF yüklendi.</p>
+        <p id="book-success" class="hidden text-sm text-zinc-700">PDF yüklendi.</p>
       </div>
     </div>
   </section>
 
-  <section id="videos-section" class="space-y-4 hidden">
-    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
+  <section id="videos-section" class="space-y-4 hidden md:max-w-5xl md:mx-auto">
+    <div class="p-4 space-y-3">
       <div class="flex items-center gap-2">
         <h3 class="font-semibold">Videolar</h3>
       </div>
       <div id="video-admin-card" class="hidden space-y-2">
-        <p class="text-sm text-slate-600">Google Drive linki ile video yükleyin.</p>
+        <p class="text-sm text-zinc-600">Google Drive linki ile video yükleyin.</p>
         <form id="video-form" class="space-y-2">
           <input name="video_title" placeholder="Video başlığı (isteğe bağlı)"
-                 class="w-full rounded-xl bg-white border border-brand-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
+                 class="w-full rounded-lg bg-white border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400">
           <input name="video_url" placeholder="Google Drive paylaşım linki"
-                 class="w-full rounded-xl bg-white border border-brand-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
-          <button type="submit" class="w-full py-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold shadow-md">
+                 class="w-full rounded-lg bg-white border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400">
+          <button type="submit" class="w-full py-3 rounded-lg bg-zinc-900 hover:bg-zinc-900 text-white font-semibold shadow-md">
             Video Ekle
           </button>
         </form>
-        <p id="video-success" class="hidden text-sm text-emerald-600">Video yüklendi.</p>
+        <p id="video-success" class="hidden text-sm text-zinc-700">Video yüklendi.</p>
       </div>
       <div id="video-list" class="grid grid-cols-1 gap-3 md:grid-cols-2"></div>
     </div>
   </section>
 
-  <section id="support-section" class="space-y-4 hidden md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
-    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
+  <section id="support-section" class="space-y-4 hidden md:grid md:grid-cols-2 md:gap-6 lg:gap-8 md:space-y-0 md:justify-items-center md:[&>div]:w-full">
+    <div class="border border-gray-200 rounded-lg p-4 space-y-3">
       <div class="flex items-center justify-between">
         <div class="space-y-1">
           <h3 class="font-semibold">WhatsApp ile İletişime Geç</h3>
-          <p class="text-sm text-slate-600">Sorularınız için tıklayın</p>
+          <p class="text-sm text-zinc-600">Sorularınız için tıklayın</p>
         </div>
         <a href="https://wa.me/905544610207" target="_blank"
-           class="px-4 py-2 rounded-xl text-white font-semibold"><img src="../static/img/wp-icon.png" class="w-10 h-10" alt="Whatsapp" />
+           class="px-4 py-2 rounded-lg text-white font-semibold"><img src="../static/img/wp-icon.png" class="w-10 h-10" alt="Whatsapp" />
           </a>
       </div>
     </div>
-    <div class="bg-white border border-brand-100 rounded-2xl p-4 shadow space-y-3">
+    <div class=" border border-gray-200 rounded-lg p-4 space-y-3">
       <div class="flex items-center gap-2">
-        <span class="text-lg">❔</span>
         <h3 class="font-semibold">Sıkça Sorulan Sorular</h3>
       </div>
       <div id="faq-list" class="space-y-2"></div>
@@ -405,7 +522,7 @@
 
 <div
   id="toast"
-  class="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl shadow-lg text-sm font-semibold"
+  class="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg shadow-lg text-sm font-semibold"
   style="opacity: 0; pointer-events: none; transform: translate(-50%, 12px); background: #0f172a; color: #ffffff;"
   role="status"
   aria-live="polite"

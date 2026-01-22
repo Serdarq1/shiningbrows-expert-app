@@ -795,10 +795,11 @@ def api_photos_feed() -> Any:
                     student_ids.add(sid)
         student_ids_list = list(student_ids)
         names: Dict[int, str] = {}
+        avatars: Dict[int, str] = {}
         if student_ids_list:
             name_response = (
                 supabase.table("shining_brows_student_database")
-                .select("id,name")
+                .select("id,name,avatar_url")
                 .in_("id", student_ids_list)
                 .execute()
             )
@@ -806,9 +807,14 @@ def api_photos_feed() -> Any:
                 sid = row.get("id")
                 if sid is not None:
                     names[int(sid)] = row.get("name", "")
+                    avatar_key = row.get("avatar_url") or ""
+                    avatar_url = build_image_url(avatar_key) or avatar_key
+                    if avatar_url:
+                        avatars[int(sid)] = avatar_url
         for photo in photos:
             student_id = photo.get("student_id")
             photo["student_name"] = names.get(student_id, "Uzman")
+            photo["student_avatar_url"] = avatars.get(student_id, "")
             pid = photo.get("id")
             photo["reactions"] = reaction_counts.get(pid, {})
             photo["my_reaction"] = my_reactions.get(pid)
