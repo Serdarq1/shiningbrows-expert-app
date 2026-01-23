@@ -4,7 +4,7 @@
 {% endblock %}
 {% block content %}
 <div id="sidebar-overlay" class="fixed inset-0 bg-black/30 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-300 z-30"></div>
-<aside id="sidebar" class="fixed top-0 left-0 h-full w-64 bg-white border-r border-gray-200 shadow-xl transform -translate-x-full transition-transform duration-300 z-40">
+<aside id="sidebar" class="fixed top-0 left-0 h-full w-64 overflow-y-auto bg-white border-r border-gray-200 shadow-xl transform -translate-x-full transition-transform duration-300 z-40">
   <div class="px-4 py-6 space-y-6">
     <div class="flex items-center gap-3">
       <div class="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden text-xl">
@@ -125,7 +125,7 @@
       </div>
     </div>
     <div class="flex h-16 w-16 items-center justify-center">
-      <img src="../static/img/logo-transparent.png" alt="Shining Brows" class="h-16 w-16 object-contain" />
+     <a href="/" > <img src="../static/img/logo-transparent.png" alt="Shining Brows" class="h-16 w-16 object-contain cursor-pointer" /></a>
     </div>
     <button id="sidebar-toggle" class="flex h-12 w-12 items-center justify-center rounded-full text-zinc-800" type="button" aria-label="Menü">
       <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
