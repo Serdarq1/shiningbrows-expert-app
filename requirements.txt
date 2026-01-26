@@ -4,3 +4,5 @@ gunicorn==23.0.0
 supabase==2.8.1
 pillow==11.0.0
 pillow-heif==0.18.0
+twilio
+bcrypt
