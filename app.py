@@ -1,6 +1,7 @@
 import io
 import os
 import uuid
+import bcrypt
 from datetime import UTC, datetime
 from tempfile import NamedTemporaryFile
 import ssl
@@ -25,6 +26,11 @@ from flask import (
     url_for,
 )
 from werkzeug.security import check_password_hash, generate_password_hash
+
+try:
+    from twilio.rest import Client as TwilioClient
+except ImportError:
+    TwilioClient = None
 
 try:
     from supabase import Client, create_client
@@ -164,6 +170,22 @@ def extract_storage_key(path: str) -> Optional[str]:
         return path
     marker_public = f"/storage/v1/object/public/{SUPABASE_BUCKET}/"
     marker_signed = f"/storage/v1/object/sign/{SUPABASE_BUCKET}/"
+    for marker in (marker_public, marker_signed):
+        idx = path.find(marker)
+        if idx != -1:
+            remainder = path[idx + len(marker):]
+            return remainder.split("?", 1)[0]
+    return None
+
+
+def extract_storage_key_for_bucket(path: str, bucket: str) -> Optional[str]:
+    """Extract bucket-relative storage key from a URL or stored path for a specific bucket."""
+    if not path:
+        return None
+    if not (path.startswith("http://") or path.startswith("https://")):
+        return path
+    marker_public = f"/storage/v1/object/public/{bucket}/"
+    marker_signed = f"/storage/v1/object/sign/{bucket}/"
     for marker in (marker_public, marker_signed):
         idx = path.find(marker)
         if idx != -1:
@@ -368,7 +390,6 @@ def index() -> Any:
 @app.route("/login", methods=["GET", "POST"])
 def login() -> Any:
     error = None
-    show_password = False
 
     if request.method == "POST":
         full_name = request.form.get("full_name", "").strip()
@@ -379,23 +400,19 @@ def login() -> Any:
             student = fetch_student_by_name(full_name)
             if student:
                 saved_password = student.get("password")
-                if saved_password:
-                    show_password = True
-                    if not password:
-                        error = "Bu kullanıcı için şifre gerekli."
-                    elif not check_password_hash(saved_password, password):
-                        error = "Şifre hatalı."
-                    else:
-                        session["student_id"] = student["id"]
-                        return redirect(url_for("dashboard"))
+                if not saved_password:
+                    error = "Bu kullanıcı için şifre tanımlı değil."
+                elif not password:
+                    error = "Şifre gerekli."
+                elif not bcrypt.checkpw(password.encode("utf-8"), saved_password.encode("utf-8")):
+                    error = "Şifre hatalı."
                 else:
-                    # No password set; allow login
                     session["student_id"] = student["id"]
                     return redirect(url_for("dashboard"))
             else:
                 error = "Uzman bulunamadı. Bilgilerinizi kontrol edin."
 
-    return render_template("login.html", error=error, show_password=show_password)
+    return render_template("login.html", error=error)
 
 
 @app.route("/logout", methods=["GET", "POST"])
@@ -403,16 +420,34 @@ def logout() -> Any:
     session.clear()
     return redirect(url_for("login"))
 
+@app.route("/guest")
+def guest() -> Any:
+    session.clear()
+    session["guest"] = True
+    return redirect(url_for("dashboard"))
+
 
 @app.route("/dashboard")
 def dashboard() -> Any:
-    if "student_id" not in session:
+    if "student_id" not in session and not session.get("guest"):
         return redirect(url_for("login"))
     return render_template("dashboard.html")
 
 
 @app.route("/api/student")
 def api_student() -> Any:
+    if session.get("guest"):
+        return jsonify(
+            {
+                "id": None,
+                "name": "Misafir",
+                "role": "guest",
+                "phone": "",
+                "has_password": True,
+                "avatar_url": "../static/img/logo-transparent.png",
+                "expert_status": "",
+            }
+        )
     student = get_current_student()
     if not student:
         return jsonify({"error": "Oturum bulunamadı"}), 401
@@ -428,15 +463,15 @@ def api_student() -> Any:
     return jsonify(student_copy)
 
 
-@app.route("/api/auth/check")
-def api_auth_check() -> Any:
-    full_name = (request.args.get("full_name") or "").strip()
-    if not full_name:
-        return jsonify({"found": False, "requires_password": False}), 200
-    student = fetch_student_by_name(full_name)
-    if not student:
-        return jsonify({"found": False, "requires_password": False}), 200
-    return jsonify({"found": True, "requires_password": bool(student.get("password"))}), 200
+# @app.route("/api/auth/check")
+# def api_auth_check() -> Any:
+#     full_name = (request.args.get("full_name") or "").strip()
+#     if not full_name:
+#         return jsonify({"found": False, "requires_password": False}), 200
+#     student = fetch_student_by_name(full_name)
+#     if not student:
+#         return jsonify({"found": False, "requires_password": False}), 200
+#     return jsonify({"found": True, "requires_password": bool(student.get("password"))}), 200
 
 
 @app.route("/service-worker.js")
@@ -477,6 +512,83 @@ def api_support() -> Any:
         return jsonify({"Supabase Error": "Supabase bağlantı hatası."})
 
     return jsonify({"ok": True})
+
+# ---------- Orders ----------
+
+@app.route("/api/orders", methods=["POST"])
+def api_orders() -> Any:
+    student = get_current_student()
+    if not student:
+        return jsonify({"error": "Oturum bulunamadı"}), 401
+    phone = (student.get("phone") or "").strip()
+    if not phone:
+        return jsonify({"error": "missing_phone"}), 400
+    payload = request.get_json() or {}
+    order = (payload.get("order") or "").strip()
+    items = payload.get("items") or []
+    total_qty = payload.get("total_qty")
+    if not order:
+        return jsonify({"error": "Sipariş içeriği gerekli."}), 400
+    if TwilioClient is None:
+        return jsonify({"error": "SMS servisi yapılandırılmadı."}), 500
+    if not supabase:
+        return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
+    from_number = os.getenv("TWILIO_WHATSAPP_NUMBER", "")
+    if not account_sid or not auth_token or not from_number:
+        return jsonify({"error": "SMS servis bilgileri eksik."}), 500
+
+    if total_qty is None:
+        try:
+            total_qty = sum(int(item.get("qty", 0)) for item in items if isinstance(item, dict))
+        except Exception:
+            total_qty = 0
+
+    body = (
+        "Siparişiniz alındı!\n"
+        f"Sipariş içeriğiniz: {order}.\n"
+        f"Toplam adet: {total_qty}.\n"
+        "Shining Brows ile güzellikte fark yaratın."
+    )
+    try:
+        order_record = {
+            "student_id": student["id"],
+            "phone": phone,
+            "order_text": order,
+            "items": items,
+            "status": "new",
+            "created_at": datetime.now(UTC).isoformat(),
+            "notes": None,
+            "total_qty": total_qty,
+        }
+        supabase.table("orders").insert(order_record).execute()
+    except Exception as exc:
+        print("Order insert failed:", exc)
+        return jsonify({"error": "Sipariş kaydedilemedi."}), 500
+
+    try:
+        client = TwilioClient(account_sid, auth_token)
+        message = client.messages.create(
+            from_=f"whatsapp:{from_number}",
+            to=f"whatsapp:{phone}",
+            body=body,
+        )
+        admin_body = (
+            f"Yeni sipariş: {student.get('name', '')} ({phone}).\n"
+            f"İçerik: {order}.\n"
+            f"Toplam adet: {total_qty}."
+        )
+        client.messages.create(
+            from_=f"whatsapp:{from_number}",
+            to="whatsapp:+905544610207",
+            body=admin_body,
+        )
+        return jsonify({"ok": True, "sid": message.sid})
+    except Exception as exc:
+        print("Order SMS failed:", exc)
+        return jsonify({"error": "SMS gönderilemedi."}), 500
 
 # ---------- Books ----------
 
@@ -591,6 +703,68 @@ def api_videos_import() -> Any:
     record["video_url"] = video_url
     record["video_path"] = storage_key
     return jsonify(record), 201
+
+
+@app.route("/api/videos/<int:video_id>", methods=["PUT", "DELETE"])
+def api_videos_update_delete(video_id: int) -> Any:
+    student = get_current_student()
+    if not student:
+        return jsonify({"error": "Oturum bulunamadı"}), 401
+    if student.get("role") not in ELEVATED_ROLES:
+        return jsonify({"error": "Yetkisiz işlem"}), 403
+    if not supabase:
+        return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+
+    if request.method == "PUT":
+        payload = request.get_json() or {}
+        title = (payload.get("title") or "").strip()
+        if not title:
+            return jsonify({"error": "Başlık gerekli."}), 400
+        try:
+            response = (
+                supabase.table("videos")
+                .update({"title": title})
+                .eq("id", video_id)
+                .execute()
+            )
+            updated = getattr(response, "data", []) or []
+            if not updated:
+                return jsonify({"error": "Video bulunamadı."}), 404
+            video = updated[0]
+            storage_key = video.get("video_url", "")
+            video["video_path"] = storage_key
+            url = build_storage_url(storage_key, SUPABASE_VIDEO_BUCKET) if storage_key else None
+            if url:
+                video["video_url"] = url
+            return jsonify(video)
+        except Exception as exc:
+            print("Video update failed:", exc)
+            return jsonify({"error": "Video güncellenemedi."}), 500
+
+    try:
+        response = supabase.table("videos").select("id,video_url").eq("id", video_id).execute()
+        rows = getattr(response, "data", []) or []
+        if not rows:
+            return jsonify({"error": "Video bulunamadı."}), 404
+        video = rows[0]
+    except Exception as exc:
+        print("Video lookup failed:", exc)
+        return jsonify({"error": "Video bulunamadı."}), 404
+
+    storage_key = extract_storage_key_for_bucket(video.get("video_url", ""), SUPABASE_VIDEO_BUCKET)
+    if storage_key:
+        try:
+            supabase.storage.from_(SUPABASE_VIDEO_BUCKET).remove([storage_key])
+        except Exception as exc:
+            print("Video storage delete failed:", exc)
+
+    try:
+        supabase.table("videos").delete().eq("id", video_id).execute()
+    except Exception as exc:
+        print("Video delete failed:", exc)
+        return jsonify({"error": "Video silinemedi."}), 500
+
+    return jsonify({"ok": True})
 
 
 @app.route("/api/books/upload", methods=["POST"])
@@ -1036,6 +1210,98 @@ def rules():
         return jsonify([]), 500
 
 
+@app.route("/api/campaigns", methods=["POST", "GET"])
+def campaigns() -> Any:
+    if not supabase:
+        return jsonify([]), 200
+
+    try:
+        if request.method == "POST":
+            student = get_current_student()
+            if not student:
+                return jsonify({"error": "Oturum bulunamadı"}), 401
+            if student.get("role") not in ELEVATED_ROLES:
+                return jsonify({"error": "Yetkisiz işlem"}), 403
+            payload = request.get_json() or {}
+            name = (payload.get("name") or payload.get("title") or "").strip()
+            description = (payload.get("description") or "").strip()
+            starts_at = (payload.get("starts_at") or payload.get("valid_from") or "").strip()
+            ends_at = (payload.get("ends_at") or payload.get("valid_to") or "").strip()
+            if not name or not description or not starts_at or not ends_at:
+                return jsonify({"error": "Kampanya bilgileri eksik."}), 400
+            record = {
+                "name": name,
+                "description": description,
+                "starts_at": starts_at,
+                "ends_at": ends_at,
+            }
+            response = supabase.table("campaigns").insert(record).execute()
+            inserted = getattr(response, "data", []) or []
+            return jsonify(inserted[0] if inserted else record), 201
+        response = (
+            supabase.table("campaigns")
+            .select("id,name,description,starts_at,ends_at")
+            .order("starts_at", desc=False)
+            .execute()
+        )
+        campaigns = getattr(response, "data", []) or []
+        return jsonify(campaigns), 200
+    except Exception as e:
+        print("Failed to fetch campaigns", e)
+        return jsonify([]), 500
+
+
+@app.route("/api/campaigns/<int:campaign_id>", methods=["PUT", "DELETE"])
+def campaigns_update_delete(campaign_id: int) -> Any:
+    student = get_current_student()
+    if not student:
+        return jsonify({"error": "Oturum bulunamadı"}), 401
+    if student.get("role") not in ELEVATED_ROLES:
+        return jsonify({"error": "Yetkisiz işlem"}), 403
+    if not supabase:
+        return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+
+    if request.method == "PUT":
+        payload = request.get_json() or {}
+        name = (payload.get("name") or payload.get("title") or "").strip()
+        description = (payload.get("description") or "").strip()
+        starts_at = (payload.get("starts_at") or payload.get("valid_from") or "").strip()
+        ends_at = (payload.get("ends_at") or payload.get("valid_to") or "").strip()
+        if not name or not description or not starts_at or not ends_at:
+            return jsonify({"error": "Kampanya bilgileri eksik."}), 400
+        updates = {
+            "name": name,
+            "description": description,
+            "starts_at": starts_at,
+            "ends_at": ends_at,
+        }
+        try:
+            response = (
+                supabase.table("campaigns")
+                .update(updates)
+                .eq("id", campaign_id)
+                .execute()
+            )
+            updated = getattr(response, "data", []) or []
+            if not updated:
+                return jsonify({"error": "Kampanya bulunamadı."}), 404
+            return jsonify(updated[0])
+        except Exception as exc:
+            print("Campaign update failed:", exc)
+            return jsonify({"error": "Kampanya güncellenemedi."}), 500
+
+    try:
+        response = supabase.table("campaigns").delete().eq("id", campaign_id).execute()
+        deleted = getattr(response, "data", []) or []
+        if not deleted:
+            return jsonify({"error": "Kampanya bulunamadı."}), 404
+    except Exception as exc:
+        print("Campaign delete failed:", exc)
+        return jsonify({"error": "Kampanya silinemedi."}), 500
+
+    return jsonify({"ok": True})
+
+
 @app.route("/api/workshops", methods=["POST", "GET"])
 def workshops():
     if not supabase:
@@ -1043,33 +1309,238 @@ def workshops():
     
     try:
         if request.method == "POST":
-            payload = request.get_json() or {}
+            student = get_current_student()
+            if not student:
+                return jsonify({"error": "Oturum bulunamadı"}), 401
+            if student.get("role") not in ELEVATED_ROLES:
+                return jsonify({"error": "Yetkisiz işlem"}), 403
+            payload = request.get_json() if request.is_json else request.form
             workshop = (payload.get("title") or payload.get("workshop") or "").strip()
             instructor = (payload.get("instructor") or "").strip()
             location = (payload.get("location") or "").strip()
             date = (payload.get("date") or "").strip()
             if not workshop or not instructor:
-                return jsonify({"error": "Workshop kısmı bulunamadı."}), 400
+                return jsonify({"error": "Workshop bilgileri eksik."}), 400
+            image_key = None
+            image = request.files.get("image")
+            if image:
+                filename = image.filename or ""
+                extension = os.path.splitext(filename)[1] or ".jpg"
+                mimetype = image.mimetype or "application/octet-stream"
+                if not mimetype.startswith("image/") and extension.lower() not in {".heic", ".heif"}:
+                    return jsonify({"error": "Lütfen geçerli bir resim dosyası yükleyin."}), 400
+                file_bytes = image.read()
+                if not file_bytes:
+                    return jsonify({"error": "Dosya boş görünüyor."}), 400
+                file_bytes, mimetype, extension = convert_image_if_needed(file_bytes, mimetype, extension)
+                image_key = f"workshops/{uuid.uuid4().hex}{extension}"
+                try:
+                    supabase.storage.from_(SUPABASE_BUCKET).upload(
+                        path=image_key,
+                        file=file_bytes,
+                        file_options={"content-type": mimetype, "upsert": "false"},
+                    )
+                except Exception as exc:
+                    print("Workshop image upload failed:", exc)
+                    return jsonify({"error": "Workshop görseli yüklenemedi."}), 500
             record = {
                 "title": workshop,
                 "instructor": instructor,
                 "location": location,
                 "date": date,
             }
+            if image_key:
+                record["image_url"] = image_key
             response = supabase.table("workshops").insert(record).execute()
             inserted = getattr(response, "data", []) or []
             return jsonify(inserted[0] if inserted else record), 201
         response = (
             supabase.table("workshops")
-            .select("id,title,instructor,date,location")
+            .select("id,title,instructor,date,location,image_url")
             .order("date", desc=False)
             .execute()
         )
         workshops = getattr(response, "data", []) or []
+        for workshop in workshops:
+            storage_key = workshop.get("image_url", "")
+            if storage_key:
+                workshop["image_path"] = storage_key
+                image_url = build_image_url(storage_key)
+                if image_url:
+                    workshop["image_url"] = image_url
         return jsonify(workshops), 200
     except Exception as e:
         print("Failed to fetch ", e)
         return jsonify([]), 500
+
+
+@app.route("/api/workshops/<int:workshop_id>", methods=["PUT", "DELETE"])
+def workshops_update_delete(workshop_id: int) -> Any:
+    student = get_current_student()
+    if not student:
+        return jsonify({"error": "Oturum bulunamadı"}), 401
+    if student.get("role") not in ELEVATED_ROLES:
+        return jsonify({"error": "Yetkisiz işlem"}), 403
+    if not supabase:
+        return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+
+    if request.method == "PUT":
+        payload = request.get_json() if request.is_json else request.form
+        workshop = (payload.get("title") or payload.get("workshop") or "").strip()
+        instructor = (payload.get("instructor") or "").strip()
+        location = (payload.get("location") or "").strip()
+        date = (payload.get("date") or "").strip()
+        if not workshop or not instructor:
+            return jsonify({"error": "Workshop bilgileri eksik."}), 400
+
+        try:
+            response = supabase.table("workshops").select("id,image_url").eq("id", workshop_id).execute()
+            rows = getattr(response, "data", []) or []
+            if not rows:
+                return jsonify({"error": "Workshop bulunamadı."}), 404
+            existing = rows[0]
+        except Exception as exc:
+            print("Workshop lookup failed:", exc)
+            return jsonify({"error": "Workshop bulunamadı."}), 404
+
+        updates = {
+            "title": workshop,
+            "instructor": instructor,
+            "location": location,
+            "date": date,
+        }
+
+        image = request.files.get("image")
+        if image:
+            filename = image.filename or ""
+            extension = os.path.splitext(filename)[1] or ".jpg"
+            mimetype = image.mimetype or "application/octet-stream"
+            if not mimetype.startswith("image/") and extension.lower() not in {".heic", ".heif"}:
+                return jsonify({"error": "Lütfen geçerli bir resim dosyası yükleyin."}), 400
+            file_bytes = image.read()
+            if not file_bytes:
+                return jsonify({"error": "Dosya boş görünüyor."}), 400
+            file_bytes, mimetype, extension = convert_image_if_needed(file_bytes, mimetype, extension)
+            image_key = f"workshops/{uuid.uuid4().hex}{extension}"
+            try:
+                supabase.storage.from_(SUPABASE_BUCKET).upload(
+                    path=image_key,
+                    file=file_bytes,
+                    file_options={"content-type": mimetype, "upsert": "false"},
+                )
+            except Exception as exc:
+                print("Workshop image upload failed:", exc)
+                return jsonify({"error": "Workshop görseli yüklenemedi."}), 500
+
+            old_key = extract_storage_key(existing.get("image_url", ""))
+            if old_key:
+                try:
+                    supabase.storage.from_(SUPABASE_BUCKET).remove([old_key])
+                except Exception as exc:
+                    print("Workshop image delete failed:", exc)
+            updates["image_url"] = image_key
+
+        try:
+            response = (
+                supabase.table("workshops")
+                .update(updates)
+                .eq("id", workshop_id)
+                .execute()
+            )
+            updated = getattr(response, "data", []) or []
+            if not updated:
+                return jsonify({"error": "Workshop bulunamadı."}), 404
+            return jsonify(updated[0])
+        except Exception as exc:
+            print("Workshop update failed:", exc)
+            return jsonify({"error": "Workshop güncellenemedi."}), 500
+
+    try:
+        response = supabase.table("workshops").select("id,image_url").eq("id", workshop_id).execute()
+        rows = getattr(response, "data", []) or []
+        if not rows:
+            return jsonify({"error": "Workshop bulunamadı."}), 404
+        workshop = rows[0]
+    except Exception as exc:
+        print("Workshop lookup failed:", exc)
+        return jsonify({"error": "Workshop bulunamadı."}), 404
+
+    storage_key = extract_storage_key(workshop.get("image_url", ""))
+    if storage_key:
+        try:
+            supabase.storage.from_(SUPABASE_BUCKET).remove([storage_key])
+        except Exception as exc:
+            print("Workshop image delete failed:", exc)
+
+    try:
+        response = supabase.table("workshops").delete().eq("id", workshop_id).execute()
+        deleted = getattr(response, "data", []) or []
+        if not deleted:
+            return jsonify({"error": "Workshop bulunamadı."}), 404
+    except Exception as exc:
+        print("Workshop delete failed:", exc)
+        return jsonify({"error": "Workshop silinemedi."}), 500
+
+    return jsonify({"ok": True})
+
+
+@app.route("/api/workshops/signup", methods=["POST"])
+def workshops_signup() -> Any:
+    payload = request.get_json() or {}
+    name = (payload.get("name") or "").strip()
+    phone = (payload.get("phone") or "").strip()
+    title = (payload.get("title") or "").strip()
+    date = (payload.get("date") or "").strip()
+    location = (payload.get("location") or "").strip()
+    if not name or not phone or not title:
+        return jsonify({"error": "Eksik bilgi."}), 400
+    if TwilioClient is None:
+        return jsonify({"error": "SMS servisi yapılandırılmadı."}), 500
+    if not supabase:
+        return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
+    from_number = os.getenv("TWILIO_WHATSAPP_NUMBER", "")
+    if not account_sid or not auth_token or not from_number:
+        return jsonify({"error": "SMS servis bilgileri eksik."}), 500
+
+    body = (
+        "Workshop başvurusu alındı.\n"
+        f"İsim: {name}\n"
+        f"Telefon: {phone}\n"
+        f"Workshop: {title}\n"
+        f"Tarih: {date}\n"
+        f"Konum: {location}"
+    )
+    try:
+        supabase.table("workshop_signups").insert(
+            {
+                "name": name,
+                "phone": phone,
+                "title": title,
+                "date": date,
+                "location": location,
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+        ).execute()
+    except Exception as exc:
+        print("Workshop signup insert failed:", exc)
+        return jsonify({"error": "Başvuru kaydedilemedi."}), 500
+
+    try:
+        client = TwilioClient(account_sid, auth_token)
+        admin_numbers = ["whatsapp:+905465330367", "whatsapp:+905544610207"]
+        for admin in admin_numbers:
+            client.messages.create(
+                from_=f"whatsapp:{from_number}",
+                to=admin,
+                body=body,
+            )
+        return jsonify({"ok": True})
+    except Exception as exc:
+        print("Workshop signup SMS failed:", exc)
+        return jsonify({"error": "Başvuru gönderilemedi."}), 500
 
 
 @app.route("/api/account/password", methods=["POST"])

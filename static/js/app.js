@@ -3,12 +3,12 @@ const sections = [
   "dashboard-section",
   "profile-section",
   "products-section",
-  "photos-section",
+  "orders-section",
   "feed-section",
   "campaigns-section",
+  "workshops-section",
   "experts-section",
-  "books-section",
-  "videos-section",
+  "media-section",
   "support-section",
 ];
 const FEED_REACTIONS = [
@@ -24,16 +24,22 @@ let feedPhotos = [];
 let showWinnerOnly = false;
 let pinWinner = false;
 let bookUrl = "";
+let currentUserPhone = "";
+let currentUserName = "";
+let isGuestUser = false;
+const orderCart = {};
 
 document.addEventListener("DOMContentLoaded", () => {
   setupButtonHoverEffects();
   setupNavigation();
   setupSidebar();
   setupFeedControls();
+  setupFeedPhotosToggle();
   setupPanelShortcuts();
   setupNotificationButton();
   loadStudent();
   loadProducts();
+  loadOrderProducts();
   loadRules();
   loadQuickTips();
   loadEducation();
@@ -52,6 +58,9 @@ document.addEventListener("DOMContentLoaded", () => {
   setupWorkshopAdmin();
   setupBookForm();
   setupVideoForm();
+  setupCampaignAdmin();
+  setupOrderActions();
+  setupWorkshopSignup();
 });
 
 function setupButtonHoverEffects() {
@@ -77,6 +86,42 @@ function setupNotificationButton() {
     if (event.target === button || button.contains(event.target)) return;
     popover.classList.add("hidden");
   });
+}
+
+function applyRoleVisibility(role) {
+  const allowed = role === "guest"
+    ? new Set(["panel-section", "products-section", "workshops-section"])
+    : null;
+  if (!allowed) return;
+  document.querySelectorAll(".nav-btn").forEach((btn) => {
+    const target = btn.dataset.target;
+    btn.classList.toggle("hidden", !allowed.has(target));
+  });
+  document.querySelectorAll(".panel-shortcut").forEach((btn) => {
+    const target = btn.dataset.target;
+    btn.classList.toggle("hidden", !allowed.has(target));
+  });
+  switchSection("panel-section");
+}
+
+function setupFeedPhotosToggle() {
+  const openBtn = document.getElementById("open-photos");
+  const backBtn = document.getElementById("back-to-feed");
+  if (openBtn) {
+    openBtn.addEventListener("click", () => setFeedView("photos"));
+  }
+  if (backBtn) {
+    backBtn.addEventListener("click", () => setFeedView("main"));
+  }
+}
+
+function setFeedView(view) {
+  const main = document.getElementById("feed-main");
+  const photos = document.getElementById("feed-photos");
+  if (!main || !photos) return;
+  const showPhotos = view === "photos";
+  main.classList.toggle("hidden", showPhotos);
+  photos.classList.toggle("hidden", !showPhotos);
 }
 
 function setupNavigation() {
@@ -195,6 +240,7 @@ function switchSection(targetId) {
     el.classList.toggle("hidden", !isTarget);
     el.classList.toggle("md:hidden", !isTarget);
   });
+  setFeedView("main");
 }
 
 function setupFeedControls() {
@@ -269,6 +315,10 @@ function showToast(message, { type = "info", duration = 2200 } = {}) {
   toast.dataset.timerId = String(timerId);
 }
 
+function isElevatedRole() {
+  return currentUserRole === "admin" || currentUserRole === "master";
+}
+
 function formatExpertStatus(status) {
   if (!status) return "-";
   const normalized = String(status).toLowerCase().trim();
@@ -276,6 +326,44 @@ function formatExpertStatus(status) {
   if (normalized === "shining expert") return "Shining Expert";
   if (normalized === "master trainer") return "Master Trainer";
   return status;
+}
+
+function parsePhoneNumber(rawPhone = "") {
+  const normalized = String(rawPhone).trim();
+  if (!normalized) {
+    return { countryCode: "+90", localNumber: "" };
+  }
+  if (normalized.startsWith("+")) {
+    if (normalized.startsWith("+90")) {
+      return { countryCode: "+90", localNumber: normalized.slice(3).replace(/\s+/g, "") };
+    }
+    const match = normalized.match(/^\+(\d{1,3})(.*)$/);
+    if (match) {
+      const country = `+${match[1]}`;
+      const local = match[2].replace(/\s+/g, "");
+      return { countryCode: country, localNumber: local };
+    }
+  }
+  return { countryCode: "+90", localNumber: normalized.replace(/\s+/g, "") };
+}
+
+function buildFullPhone(countryCode, localNumber) {
+  const code = String(countryCode || "").trim() || "+90";
+  const local = String(localNumber || "").trim().replace(/[^\d+]/g, "");
+  if (!local) return "";
+  if (local.startsWith("+")) return local;
+  const normalizedCode = code.startsWith("+") ? code : `+${code}`;
+  return `${normalizedCode}${local}`;
+}
+
+function formatWorkshopDate(rawDate) {
+  if (!rawDate) return "";
+  const date = new Date(rawDate);
+  if (Number.isNaN(date.getTime())) return String(rawDate);
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}.${month}.${year}`;
 }
 
 function toTitleCase(value) {
@@ -297,11 +385,17 @@ async function loadStudent() {
     document.getElementById("certificate-date").textContent = student.date || "-";
     document.getElementById("certificate-status").textContent = student.status || "Aktif";
     currentUserRole = student.role || "student";
+    isGuestUser = currentUserRole === "guest";
+    currentUserName = student.name || "";
     studentHasPassword = !!student.has_password;
     const phoneInput = document.getElementById("profile-phone");
+    const countryInput = document.getElementById("profile-country");
     if (phoneInput) {
-      phoneInput.value = student.phone || "";
+      const parsed = parsePhoneNumber(student.phone || "");
+      phoneInput.value = parsed.localNumber;
+      if (countryInput) countryInput.value = parsed.countryCode;
     }
+    currentUserPhone = student.phone || "";
     const avatar = document.getElementById("profile-avatar");
     if (avatar) {
       avatar.src = student.avatar_url || "../static/img/logo-transparent.png";
@@ -326,16 +420,29 @@ async function loadStudent() {
     if (sidebarDate) {
       sidebarDate.textContent = student.date || "-";
     }
+    const expertId = document.getElementById("expert-id");
+    if (expertId) expertId.closest("p")?.classList.toggle("hidden", isGuestUser);
+    if (sidebarId) sidebarId.classList.toggle("hidden", isGuestUser);
+    if (sidebarDate) sidebarDate.closest("p")?.classList.toggle("hidden", isGuestUser);
+    document.querySelectorAll("#certificate-date").forEach((el) => {
+      const parent = el.closest("p");
+      if (parent) parent.classList.toggle("hidden", isGuestUser);
+    });
     const statusText = document.getElementById("expert-status");
     if (statusText) {
       statusText.textContent = formatExpertStatus(student.expert_status);
     }
     refreshPasswordUI();
     refreshWorkshopAdminVisibility();
-    loadFeed();
+    applyRoleVisibility(currentUserRole);
+    if (!isGuestUser) {
+      loadFeed();
+    }
   } catch (err) {
     console.error(err);
-    window.location.href = "/login";
+    if (!isGuestUser) {
+      window.location.href = "/login";
+    }
   }
 }
 
@@ -354,12 +461,14 @@ function refreshPasswordUI() {
 function refreshWorkshopAdminVisibility() {
   const card = document.getElementById("workshop-admin-card");
   if (!card) return;
-  const canEdit = currentUserRole === "admin" || currentUserRole === "master";
+  const canEdit = isElevatedRole();
   card.classList.toggle("hidden", !canEdit);
   const bookCard = document.getElementById("book-admin-card");
   if (bookCard) bookCard.classList.toggle("hidden", !canEdit);
   const videoCard = document.getElementById("video-admin-card");
   if (videoCard) videoCard.classList.toggle("hidden", !canEdit);
+  const campaignCard = document.getElementById("campaign-admin-card");
+  if (campaignCard) campaignCard.classList.toggle("hidden", !canEdit);
 }
 
 
@@ -403,7 +512,7 @@ async function loadProducts() {
   products.forEach((product) => {
     const steps = toBulletItems(product.steps);
     const card = document.createElement("div");
-    card.className = "rounded-lg border border-gray-200 bg-white p-3 space-y-2";
+    card.className = "rounded-lg bg-gray-50 p-2 space-y-2";
     card.innerHTML = `
       <div class="product-img cursor-pointer">
         <button class="flex items-center justify-center w-full" type="button">
@@ -412,7 +521,7 @@ async function loadProducts() {
         <div class="flex items-center justify-between">
           <h4 class="font-semibold">${product.name}</h4>
         </div>
-        <div class="product-details">
+        <div class="product-details hidden">
           <div class="flex items-center justify-between">
             <span class="text-xs text-zinc-500">${product.short_description || ""}</span>
           </div>
@@ -443,6 +552,243 @@ async function loadProducts() {
       card.classList.toggle("space-y-0", isHidden);
     });
     container.appendChild(card);
+  });
+}
+
+async function loadOrderProducts() {
+  const container = document.getElementById("order-product-list");
+  if (!container) return;
+  container.innerHTML = "";
+  const products = await fetchJSON("/api/products");
+  products.forEach((product) => {
+    const card = document.createElement("div");
+    card.className = "rounded-lg border border-gray-200 bg-white p-3 space-y-2";
+    card.innerHTML = `
+      <div class="flex items-center justify-center">
+        <img src="./static/img/product-images/${product.name}.svg" width="200" alt="${product.name}" />
+      </div>
+      <div class="">
+        <h4 class="font-semibold">${product.name}</h4>
+        <button type="button" class="mt-2 px-5 py-2 rounded-full text-[11px] font-semibold text-white bg-zinc-800 hover:bg-zinc-700 transition rounded-md" data-action="add">
+          Ekle
+        </button>
+      </div>
+      <p class="text-[11px] text-zinc-500">${product.short_description || ""}</p>
+    `;
+    const addBtn = card.querySelector('[data-action="add"]');
+    if (addBtn) {
+      addBtn.addEventListener("click", () => {
+        addToCart(product);
+      });
+    }
+    container.appendChild(card);
+  });
+}
+
+function addToCart(product) {
+  if (!product || !product.id) return;
+  if (!orderCart[product.id]) {
+    orderCart[product.id] = { product, qty: 0 };
+  }
+  orderCart[product.id].qty += 1;
+  renderCart();
+  openCartPanel();
+}
+
+function updateCartQty(productId, delta) {
+  const item = orderCart[productId];
+  if (!item) return;
+  item.qty += delta;
+  if (item.qty <= 0) {
+    delete orderCart[productId];
+  }
+  renderCart();
+}
+
+function renderCart() {
+  const cart = document.getElementById("order-cart");
+  const count = document.getElementById("order-count");
+  if (!cart || !count) return;
+  cart.innerHTML = "";
+  const items = Object.values(orderCart);
+  const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
+  count.textContent = `${totalQty} ürün`;
+  if (!items.length) {
+    cart.innerHTML = '<p class="text-sm text-zinc-500">Sepetiniz boş.</p>';
+    return;
+  }
+  items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm";
+    row.innerHTML = `
+      <div class="flex items-center gap-3">
+        <div class="h-10 w-10 rounded-md bg-white flex items-center justify-center overflow-hidden">
+          <img src="./static/img/product-images/${item.product.name}.svg" alt="${item.product.name}" class="h-full w-full object-contain">
+        </div>
+        <div>
+          <p class="font-semibold">${item.product.name}</p>
+          <p class="text-xs text-zinc-500">${item.product.short_description || ""}</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button type="button" class="h-7 w-7 rounded-full bg-white text-zinc-600 shadow-sm" data-action="dec">-</button>
+        <span class="min-w-[24px] text-center font-semibold">${item.qty}</span>
+        <button type="button" class="h-7 w-7 rounded-full bg-white text-zinc-600 shadow-sm" data-action="inc">+</button>
+      </div>
+    `;
+    const decBtn = row.querySelector('[data-action="dec"]');
+    const incBtn = row.querySelector('[data-action="inc"]');
+    if (decBtn) decBtn.addEventListener("click", () => updateCartQty(item.product.id, -1));
+    if (incBtn) incBtn.addEventListener("click", () => updateCartQty(item.product.id, 1));
+    cart.appendChild(row);
+  });
+}
+
+function buildOrderSummary() {
+  return Object.values(orderCart)
+    .map((item) => `${item.product.name} x${item.qty}`)
+    .join(", ");
+}
+
+function buildOrderItems() {
+  return Object.values(orderCart).map((item) => ({
+    product_id: item.product.id,
+    name: item.product.name,
+    qty: item.qty,
+  }));
+}
+
+function getTotalQty() {
+  return Object.values(orderCart).reduce((sum, item) => sum + item.qty, 0);
+}
+
+function openCartPanel() {
+  const panel = document.getElementById("cart-panel");
+  const overlay = document.getElementById("cart-overlay");
+  if (panel) panel.classList.remove("translate-x-full");
+  if (overlay) {
+    overlay.classList.remove("pointer-events-none", "opacity-0");
+    overlay.classList.add("opacity-100");
+  }
+}
+
+function closeCartPanel() {
+  const panel = document.getElementById("cart-panel");
+  const overlay = document.getElementById("cart-overlay");
+  if (panel) panel.classList.add("translate-x-full");
+  if (overlay) {
+    overlay.classList.add("pointer-events-none", "opacity-0");
+    overlay.classList.remove("opacity-100");
+  }
+}
+
+function setupOrderActions() {
+  const placeOrderBtn = document.getElementById("place-order");
+  const openCartBtn = document.getElementById("open-cart");
+  const closeCartBtn = document.getElementById("close-cart");
+  const overlay = document.getElementById("cart-overlay");
+  if (!placeOrderBtn) return;
+  renderCart();
+  if (openCartBtn) openCartBtn.addEventListener("click", openCartPanel);
+  if (closeCartBtn) closeCartBtn.addEventListener("click", closeCartPanel);
+  if (overlay) overlay.addEventListener("click", closeCartPanel);
+  placeOrderBtn.addEventListener("click", async () => {
+    const items = Object.values(orderCart);
+    if (!items.length) {
+      showToast("Sepetiniz boş.", { type: "error" });
+      return;
+    }
+    if (!currentUserPhone) {
+      showToast("Profil kısmından telefon numaranızı doldurunuz.", { type: "error" });
+      return;
+    }
+    placeOrderBtn.disabled = true;
+    try {
+      const order = buildOrderSummary();
+      const payloadItems = buildOrderItems();
+      const totalQty = getTotalQty();
+      await fetchJSON("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order, items: payloadItems, total_qty: totalQty }),
+      });
+      showToast("Siparişiniz alındı.", { type: "success" });
+      Object.keys(orderCart).forEach((key) => delete orderCart[key]);
+      renderCart();
+    } catch (err) {
+      const message = err && err.message ? err.message : "Sipariş gönderilemedi.";
+      if (message === "missing_phone") {
+        showToast("Profil kısmından telefon numaranızı doldurunuz.", { type: "error" });
+      } else {
+        showToast(message, { type: "error" });
+      }
+    } finally {
+      placeOrderBtn.disabled = false;
+    }
+  });
+}
+
+function openWorkshopSignup(workshop) {
+  const overlay = document.getElementById("workshop-signup-overlay");
+  const panel = document.getElementById("workshop-signup-panel");
+  const nameInput = document.getElementById("signup-name");
+  const phoneInput = document.getElementById("signup-phone");
+  const titleInput = document.getElementById("signup-title");
+  const dateInput = document.getElementById("signup-date");
+  const locationInput = document.getElementById("signup-location");
+  if (!overlay || !panel) return;
+  if (nameInput) nameInput.value = "";
+  if (phoneInput) phoneInput.value = "";
+  if (titleInput) titleInput.value = workshop.title || workshop.workshop || "";
+  if (dateInput) dateInput.value = formatWorkshopDate(workshop.date || "");
+  if (locationInput) locationInput.value = workshop.location || "";
+  overlay.classList.remove("pointer-events-none", "opacity-0");
+  overlay.classList.add("opacity-100");
+  panel.classList.remove("pointer-events-none", "opacity-0");
+  panel.classList.add("opacity-100");
+}
+
+function closeWorkshopSignup() {
+  const overlay = document.getElementById("workshop-signup-overlay");
+  const panel = document.getElementById("workshop-signup-panel");
+  if (!overlay || !panel) return;
+  overlay.classList.add("pointer-events-none", "opacity-0");
+  overlay.classList.remove("opacity-100");
+  panel.classList.add("pointer-events-none", "opacity-0");
+  panel.classList.remove("opacity-100");
+}
+
+function setupWorkshopSignup() {
+  const form = document.getElementById("workshop-signup-form");
+  const closeBtn = document.getElementById("workshop-signup-close");
+  const overlay = document.getElementById("workshop-signup-overlay");
+  if (closeBtn) closeBtn.addEventListener("click", closeWorkshopSignup);
+  if (overlay) overlay.addEventListener("click", closeWorkshopSignup);
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = form.signup_name.value.trim();
+    const phoneRaw = form.signup_phone.value.trim();
+    const title = form.signup_title.value.trim();
+    const date = form.signup_date.value.trim();
+    const location = form.signup_location.value.trim();
+    const phone = buildFullPhone("+90", phoneRaw);
+    if (!name || !phone || !title) {
+      showToast("Lütfen ad, telefon ve workshop bilgilerini doldurun.", { type: "error" });
+      return;
+    }
+    try {
+      await fetchJSON("/api/workshops/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, phone, title, date, location }),
+      });
+      showToast("Workshop başvurunuz alındı.", { type: "success" });
+      closeWorkshopSignup();
+    } catch (err) {
+      const message = err && err.message ? err.message : "Başvuru gönderilemedi.";
+      showToast(message, { type: "error" });
+    }
   });
 }
 
@@ -572,25 +918,70 @@ async function loadCampaigns() {
   if (!container) return;
   container.innerHTML = "";
   const campaigns = await fetchJSON("/api/campaigns");
+  const adminList = document.getElementById("campaign-admin-list");
+  if (adminList) adminList.innerHTML = "";
+  const list = Array.isArray(campaigns) ? campaigns : [];
+  if (!list.length) {
+    container.innerHTML = '<p class="text-sm text-zinc-600">Henüz kampanya yok.</p>';
+    if (adminList) {
+      adminList.innerHTML = '<p class="text-sm text-zinc-500">Kampanya bulunamadı.</p>';
+    }
+    return;
+  }
   const now = new Date();
-  campaigns.forEach((c) => {
-    const start = new Date(c.valid_from);
-    const end = new Date(c.valid_to);
+  list.forEach((c) => {
+    const start = new Date(c.starts_at);
+    const end = new Date(c.ends_at);
     const isActive = start <= now && end >= now;
-    const badge = c.type.replace("_", " ");
+    const badge = "Kampanya";
     const card = document.createElement("div");
-    card.className = "p-3 rounded-xl bg-white border border-gray-200 space-y-1 shadow-sm";
+    card.className = "rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm";
     card.innerHTML = `
-      <div class="flex items-center justify-between">
-        <h4 class="font-semibold">${c.title}</h4>
-        <span class="text-xs px-2 py-1 rounded-lg ${isActive ? "bg-zinc-900 text-white" : "bg-gray-50 text-zinc-700"}">
+      <div class="h-36 w-full bg-gray-100 overflow-hidden relative">
+        <img src="../static/img/logo-transparent.png" alt="${c.name}" class="w-full h-full object-cover">
+        <span class="absolute top-3 right-3 text-xs px-2 py-1 rounded-lg ${isActive ? "bg-zinc-900 text-white" : "bg-gray-50 text-zinc-700"}">
           ${badge}
         </span>
       </div>
-      <p class="text-sm text-zinc-600">${c.description}</p>
-      <p class="text-xs text-zinc-500">${c.valid_from} - ${c.valid_to}</p>
+      <div class="p-3 space-y-1">
+        <p class="font-semibold">${c.name}</p>
+        <p class="text-sm text-zinc-600">${c.description}</p>
+        <p class="text-xs text-zinc-500">Başlangıç: ${c.starts_at.slice(0,9)} <br /> Bitiş: ${c.ends_at.slice(0,9)}</p>
+      </div>
     `;
     container.appendChild(card);
+    if (adminList && isElevatedRole()) {
+      const row = document.createElement("div");
+      row.className = "flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm";
+      row.innerHTML = `
+        <div>
+          <p class="font-semibold">${c.name}</p>
+          <p class="text-xs text-zinc-500">${c.starts_at} - ${c.ends_at}</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" class="px-3 py-1 rounded-lg border border-gray-200 text-xs font-semibold text-zinc-600" data-action="edit">Düzenle</button>
+          <button type="button" class="px-3 py-1 rounded-lg border border-red-200 text-xs font-semibold text-red-600" data-action="delete">Sil</button>
+        </div>
+      `;
+      const editBtn = row.querySelector('[data-action="edit"]');
+      const deleteBtn = row.querySelector('[data-action="delete"]');
+      if (editBtn) {
+        editBtn.addEventListener("click", () => setCampaignFormEditing(c));
+      }
+      if (deleteBtn) {
+        deleteBtn.addEventListener("click", async () => {
+          if (!confirm("Kampanya silinsin mi?")) return;
+          try {
+            await fetchJSON(`/api/campaigns/${c.id}`, { method: "DELETE" });
+            showToast("Kampanya silindi.", { type: "success" });
+            loadCampaigns();
+          } catch (err) {
+            showToast("Kampanya silinemedi.", { type: "error" });
+          }
+        });
+      }
+      adminList.appendChild(row);
+    }
   });
 }
 
@@ -600,8 +991,13 @@ async function loadWorkshop() {
   container.innerHTML = "";
   const workshops = await fetchJSON("/api/workshops");
   const list = Array.isArray(workshops) ? workshops : [];
+  const adminList = document.getElementById("workshop-admin-list");
+  if (adminList) adminList.innerHTML = "";
   if (!list.length) {
     container.textContent = "Yakında paylaşılacak.";
+    if (adminList) {
+      adminList.innerHTML = '<p class="text-sm text-zinc-500">Workshop bulunamadı.</p>';
+    }
     return;
   }
 
@@ -611,14 +1007,59 @@ async function loadWorkshop() {
       const title = workshop.title || workshop.workshop || "Workshop";
       const dateVal = typeof workshop.date === "string" ? workshop.date.slice(0, 10) : "";
       const dateLocation = [dateVal, workshop.location || ""].filter(Boolean).join(" • ");
+      const imageUrl = workshop.image_url || "../static/img/logo-transparent.png";
       const card = document.createElement("div");
-      card.className = "p-3 rounded-lg border border-gray-200 space-y-1";
+      card.className = "rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm";
       card.innerHTML = `
-        <p class="font-semibold">${title}</p>
-        <p class="text-zinc-600">${dateLocation || "Tarih paylaşılacak"}</p>
-        <p class="text-sm text-zinc-500">${workshop.instructor || ""}</p>
+        <div class="h-66 w-full bg-gray-100 overflow-hidden transition cursor-pointer relative group" data-action="signup">
+          <img src="${imageUrl}" alt="${title}" class="w-full h-full object-cover">
+          <button type="button" class="absolute inset-0 flex items-center justify-center opacity-0 transition group-hover:opacity-100">
+            <span class="rounded-lg py-3 px-5 bg-zinc-900 text-white text-sm font-semibold shadow-md">Kayıt ol</span>
+          </button>
+        </div>
+        <div class="p-3 space-y-1">
+          <p class="font-semibold">${title}</p>
+          <p class="text-zinc-600">${dateLocation || "Tarih paylaşılacak"}</p>
+          <p class="text-sm text-zinc-500">${workshop.instructor || ""}</p>
+        </div>
       `;
       container.appendChild(card);
+      const signupArea = card.querySelector('[data-action="signup"]');
+      if (signupArea) {
+        signupArea.addEventListener("click", () => openWorkshopSignup(workshop));
+      }
+      if (adminList && isElevatedRole()) {
+        const row = document.createElement("div");
+        row.className = "flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm";
+        row.innerHTML = `
+          <div>
+            <p class="font-semibold">${title}</p>
+            <p class="text-xs text-zinc-500">${dateLocation || "-"}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" class="px-3 py-1 rounded-lg border border-gray-200 text-xs font-semibold text-zinc-600" data-action="edit">Düzenle</button>
+            <button type="button" class="px-3 py-1 rounded-lg border border-red-200 text-xs font-semibold text-red-600" data-action="delete">Sil</button>
+          </div>
+        `;
+        const editBtn = row.querySelector('[data-action="edit"]');
+        const deleteBtn = row.querySelector('[data-action="delete"]');
+        if (editBtn) {
+          editBtn.addEventListener("click", () => setWorkshopFormEditing(workshop));
+        }
+        if (deleteBtn) {
+          deleteBtn.addEventListener("click", async () => {
+            if (!confirm("Workshop silinsin mi?")) return;
+            try {
+              await fetchJSON(`/api/workshops/${workshop.id}`, { method: "DELETE" });
+              showToast("Workshop silindi.", { type: "success" });
+              loadWorkshop();
+            } catch (err) {
+              showToast("Workshop silinemedi.", { type: "error" });
+            }
+          });
+        }
+        adminList.appendChild(row);
+      }
     });
 }
 
@@ -701,6 +1142,14 @@ async function loadVideos() {
       const title = video.title || "Video";
       const date = video.created_at ? new Date(video.created_at).toLocaleDateString("tr-TR") : "";
       card.className = "rounded-lg border border-gray-200 bg-white p-4 space-y-3";
+      const actions = isElevatedRole()
+        ? `
+          <div class="flex items-center justify-end gap-2">
+            <button type="button" class="px-3 py-1 rounded-lg border border-gray-200 text-xs font-semibold text-zinc-600" data-action="edit">Düzenle</button>
+            <button type="button" class="px-3 py-1 rounded-lg border border-red-200 text-xs font-semibold text-red-600" data-action="delete">Sil</button>
+          </div>
+        `
+        : "";
       card.innerHTML = `
         <div class="flex items-center justify-between">
           <h4 class="font-semibold">${title}</h4>
@@ -711,7 +1160,27 @@ async function loadVideos() {
             <source src="${video.video_url}" type="video/mp4">
           </video>
         </div>
+        ${actions}
       `;
+      if (isElevatedRole()) {
+        const editBtn = card.querySelector('[data-action="edit"]');
+        const deleteBtn = card.querySelector('[data-action="delete"]');
+        if (editBtn) {
+          editBtn.addEventListener("click", () => setVideoFormEditing(video));
+        }
+        if (deleteBtn) {
+          deleteBtn.addEventListener("click", async () => {
+            if (!confirm("Video silinsin mi?")) return;
+            try {
+              await fetchJSON(`/api/videos/${video.id}`, { method: "DELETE" });
+              showToast("Video silindi.", { type: "success" });
+              loadVideos();
+            } catch (err) {
+              showToast("Video silinemedi.", { type: "error" });
+            }
+          });
+        }
+      }
       container.appendChild(card);
     });
   } catch (err) {
@@ -753,11 +1222,100 @@ async function loadExperts() {
   }
 }
 
+function resetWorkshopForm() {
+  const form = document.getElementById("workshop-form");
+  const cancelBtn = document.getElementById("workshop-cancel");
+  if (!form) return;
+  form.reset();
+  if (form.workshop_id) form.workshop_id.value = "";
+  if (form.workshop_image) form.workshop_image.value = "";
+  const submitBtn = form.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.textContent = "Kaydet";
+  if (cancelBtn) cancelBtn.classList.add("hidden");
+}
+
+function setWorkshopFormEditing(workshop) {
+  const form = document.getElementById("workshop-form");
+  const cancelBtn = document.getElementById("workshop-cancel");
+  if (!form || !workshop) return;
+  if (form.workshop_id) form.workshop_id.value = workshop.id || "";
+  form.workshop_title.value = workshop.title || workshop.workshop || "";
+  form.workshop_date.value = workshop.date ? String(workshop.date).slice(0, 10) : "";
+  form.workshop_location.value = workshop.location || "";
+  form.workshop_instructor.value = workshop.instructor || "";
+  if (form.workshop_image) form.workshop_image.value = "";
+  const submitBtn = form.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.textContent = "Güncelle";
+  if (cancelBtn) cancelBtn.classList.remove("hidden");
+}
+
+function resetVideoForm() {
+  const form = document.getElementById("video-form");
+  const cancelBtn = document.getElementById("video-cancel");
+  if (!form) return;
+  form.reset();
+  if (form.video_id) form.video_id.value = "";
+  const submitBtn = form.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.textContent = "Video Ekle";
+  const urlInput = form.querySelector('input[name="video_url"]');
+  if (urlInput) {
+    urlInput.disabled = false;
+    urlInput.placeholder = "Google Drive paylaşım linki";
+  }
+  if (cancelBtn) cancelBtn.classList.add("hidden");
+}
+
+function setVideoFormEditing(video) {
+  const form = document.getElementById("video-form");
+  const cancelBtn = document.getElementById("video-cancel");
+  if (!form || !video) return;
+  if (form.video_id) form.video_id.value = video.id || "";
+  form.video_title.value = video.title || "";
+  const urlInput = form.querySelector('input[name="video_url"]');
+  if (urlInput) {
+    urlInput.disabled = true;
+    urlInput.value = "";
+    urlInput.placeholder = "Video linki düzenlenemez";
+  }
+  const submitBtn = form.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.textContent = "Güncelle";
+  if (cancelBtn) cancelBtn.classList.remove("hidden");
+}
+
+function resetCampaignForm() {
+  const form = document.getElementById("campaign-form");
+  const cancelBtn = document.getElementById("campaign-cancel");
+  if (!form) return;
+  form.reset();
+  if (form.campaign_id) form.campaign_id.value = "";
+  const submitBtn = form.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.textContent = "Kampanya Kaydet";
+  if (cancelBtn) cancelBtn.classList.add("hidden");
+}
+
+function setCampaignFormEditing(campaign) {
+  const form = document.getElementById("campaign-form");
+  const cancelBtn = document.getElementById("campaign-cancel");
+  if (!form || !campaign) return;
+  if (form.campaign_id) form.campaign_id.value = campaign.id || "";
+  form.campaign_title.value = campaign.name || "";
+  form.campaign_description.value = campaign.description || "";
+  form.campaign_valid_from.value = campaign.starts_at ? String(campaign.starts_at).slice(0, 10) : "";
+  form.campaign_valid_to.value = campaign.ends_at ? String(campaign.ends_at).slice(0, 10) : "";
+  const submitBtn = form.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.textContent = "Güncelle";
+  if (cancelBtn) cancelBtn.classList.remove("hidden");
+}
+
 function setupWorkshopAdmin() {
   const form = document.getElementById("workshop-form");
   const success = document.getElementById("workshop-success");
   if (!form) return;
   const toggle = () => refreshWorkshopAdminVisibility();
+  const cancelBtn = document.getElementById("workshop-cancel");
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", () => resetWorkshopForm());
+  }
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const payload = {
@@ -771,16 +1329,26 @@ function setupWorkshopAdmin() {
       return;
     }
     try {
-      await fetchJSON("/api/workshops", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      const workshopId = form.workshop_id ? form.workshop_id.value.trim() : "";
+      const url = workshopId ? `/api/workshops/${workshopId}` : "/api/workshops";
+      const method = workshopId ? "PUT" : "POST";
+      const formData = new FormData();
+      Object.entries(payload).forEach(([key, value]) => formData.append(key, value));
+      const imageFile = form.workshop_image ? form.workshop_image.files[0] : null;
+      if (!workshopId && !imageFile) {
+        alert("Lütfen workshop görseli yükleyin.");
+        return;
+      }
+      if (imageFile) formData.append("image", imageFile);
+      await fetchJSON(url, {
+        method,
+        body: formData,
       });
       if (success) {
         success.classList.remove("hidden");
         setTimeout(() => success.classList.add("hidden"), 2000);
       }
-      form.reset();
+      resetWorkshopForm();
       loadWorkshop();
     } catch (err) {
       alert("Workshop eklenemedi. Lütfen tekrar deneyin.");
@@ -837,7 +1405,9 @@ function setupProfileForm() {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const phone = form.phone.value.trim();
-    if (!phone) {
+    const countryCode = form.country_code ? form.country_code.value.trim() : "+90";
+    const fullPhone = buildFullPhone(countryCode, phone);
+    if (!fullPhone) {
       showToast("Lütfen telefon numarası girin.", { type: "error" });
       return;
     }
@@ -845,8 +1415,9 @@ function setupProfileForm() {
       await fetchJSON("/api/account/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ phone: fullPhone }),
       });
+      currentUserPhone = fullPhone;
       if (success) {
         success.classList.remove("hidden");
         setTimeout(() => success.classList.add("hidden"), 2000);
@@ -917,6 +1488,10 @@ function setupBookForm() {
 function setupVideoForm() {
   const form = document.getElementById("video-form");
   if (!form) return;
+  const cancelBtn = document.getElementById("video-cancel");
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", () => resetVideoForm());
+  }
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -928,9 +1503,14 @@ function setupVideoForm() {
     
     const url = urlInput ? urlInput.value.trim() : "";
     const title = titleInput ? titleInput.value.trim() : "";
+    const videoId = form.video_id ? form.video_id.value.trim() : "";
     
-    if (!url) {
+    if (!videoId && !url) {
       showToast("Lütfen video linki girin.", { type: "error" });
+      return;
+    }
+    if (videoId && !title) {
+      showToast("Lütfen video başlığı girin.", { type: "error" });
       return;
     }
     
@@ -938,25 +1518,75 @@ function setupVideoForm() {
     showToast("Video yükleniyor...", { type: "info" });
     
     try {
-      await fetchJSON("/api/videos/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, title }),
-      });
+      if (videoId) {
+        await fetchJSON(`/api/videos/${videoId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title }),
+        });
+      } else {
+        await fetchJSON("/api/videos/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, title }),
+        });
+      }
       
       if (success) {
         success.classList.remove("hidden");
         setTimeout(() => success.classList.add("hidden"), 2000);
       }
       
-      form.reset();
-      showToast("Video yüklendi.", { type: "success" });
+      resetVideoForm();
+      showToast(videoId ? "Video güncellendi." : "Video yüklendi.", { type: "success" });
       loadVideos();
     } catch (err) {
       const message = err && err.message ? err.message : "Video yüklenemedi.";
       showToast(message, { type: "error" });
     } finally {
       if (submitBtn) submitBtn.disabled = false;
+    }
+  });
+}
+
+function setupCampaignAdmin() {
+  const form = document.getElementById("campaign-form");
+  if (!form) return;
+  const success = document.getElementById("campaign-success");
+  const cancelBtn = document.getElementById("campaign-cancel");
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", () => resetCampaignForm());
+  }
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      name: form.campaign_title.value.trim(),
+      description: form.campaign_description.value.trim(),
+      starts_at: form.campaign_valid_from.value,
+      ends_at: form.campaign_valid_to.value,
+    };
+    if (!payload.name || !payload.description || !payload.starts_at || !payload.ends_at) {
+      showToast("Tüm kampanya alanlarını doldurun.", { type: "error" });
+      return;
+    }
+    try {
+      const campaignId = form.campaign_id ? form.campaign_id.value.trim() : "";
+      const url = campaignId ? `/api/campaigns/${campaignId}` : "/api/campaigns";
+      const method = campaignId ? "PUT" : "POST";
+      await fetchJSON(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (success) {
+        success.classList.remove("hidden");
+        setTimeout(() => success.classList.add("hidden"), 2000);
+      }
+      resetCampaignForm();
+      showToast(campaignId ? "Kampanya güncellendi." : "Kampanya kaydedildi.", { type: "success" });
+      loadCampaigns();
+    } catch (err) {
+      showToast("Kampanya kaydedilemedi.", { type: "error" });
     }
   });
 }
@@ -1017,6 +1647,7 @@ function setupPhotoForm() {
 async function loadPhotos() {
   const gallery = document.getElementById("photo-gallery");
   if (!gallery) return;
+  if (isGuestUser) return;
   gallery.innerHTML = spinner();
   try {
     const photos = await fetchJSON("/api/photos");
@@ -1076,6 +1707,7 @@ async function loadPhotos() {
 async function loadFeed() {
   const feed = document.getElementById("feed-gallery");
   if (feed) feed.innerHTML = spinner({ size: 40 });
+  if (isGuestUser) return;
   try {
     feedPhotos = await fetchJSON("/api/photos/feed");
     renderFeed();
