@@ -15,7 +15,8 @@
       theme: {
         extend: {
           fontFamily: {
-            display: ['"Plus Jakarta Sans"', '"Inter"', 'ui-sans-serif', 'system-ui'],
+            display: ['"Playfair Display"', '"Times New Roman"', 'serif'],
+            body: ['"Manrope"', 'ui-sans-serif', 'system-ui'],
           },
           colors: {
             brand: {
@@ -26,6 +27,14 @@
               500: '#f472b6',
               600: '#ec4899',
             },
+            gold: {
+              50: '#fff9e8',
+              100: '#fcefc7',
+              200: '#f7e3a3',
+              400: '#e3c46b',
+              500: '#caa24a',
+              600: '#a8832f',
+            },
           },
         }
       }
@@ -33,10 +42,74 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --sb-gold: #caa24a;
+      --sb-gold-soft: #f7e3a3;
+      --sb-ink: #0f172a;
+    }
+
+    body {
+      font-family: "Manrope", ui-sans-serif, system-ui;
+      background:
+        radial-gradient(900px 600px at 10% -10%, rgba(202, 162, 74, 0.18), transparent 60%),
+        linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+    }
+
+    h1, h2, h3, h4, .font-display {
+      font-family: "Playfair Display", "Times New Roman", serif;
+      letter-spacing: 0.01em;
+    }
+
+    /* Subtle global accents */
+    .border-gray-200 {
+      border-color: rgba(202, 162, 74, 0.35);
+    }
+
+    .bg-zinc-900 {
+      background-color: var(--sb-gold);
+      background-image: linear-gradient(135deg, #d6b15c 0%, #b7882f 100%);
+    }
+
+    .bg-zinc-900:hover {
+      filter: saturate(1.05);
+    }
+
+    .nav-btn.bg-zinc-900 {
+      box-shadow: 0 8px 18px rgba(202, 162, 74, 0.25);
+    }
+
+    .hover\:bg-zinc-900:hover {
+      background-color: var(--sb-gold);
+      background-image: linear-gradient(135deg, #d6b15c 0%, #b7882f 100%);
+    }
+
+    .border-zinc-900 {
+      border-color: var(--sb-gold);
+    }
+
+    .hover\:border-zinc-900:hover {
+      border-color: var(--sb-gold);
+    }
+
+    .file\:bg-zinc-900::file-selector-button {
+      background-color: var(--sb-gold);
+      background-image: linear-gradient(135deg, #d6b15c 0%, #b7882f 100%);
+      color: #ffffff;
+    }
+
+    .file\:bg-zinc-900::file-selector-button:hover {
+      filter: saturate(1.05);
+    }
+
+    .text-gold { color: var(--sb-gold); }
+    .bg-gold { background-color: var(--sb-gold); }
+    .border-gold { border-color: var(--sb-gold); }
+  </style>
   {% block head %}{% endblock %}
 </head>
-<body class="bg-white min-h-screen text-zinc-900 font-display">
+<body class="min-h-screen text-zinc-900 font-body">
   <div class="min-h-screen">
     {% block content %}{% endblock %}
   </div>

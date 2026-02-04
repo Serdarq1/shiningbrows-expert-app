@@ -1,5 +1,28 @@
-{% extends "base.html" %}
-{% block content %}
-<div class="max-w-md mx-auto px-4 py-12"> <div class="text-center space-y-2"> <p class="text-xs uppercase tracking-[0.3em] text-zinc-700">Shining Brows</p> <h1 class="text-3xl font-bold text-zinc-900">Uzman Girişi</h1> <p class="text-zinc-600 text-sm">Uzman özel paneli</p> </div> <div class="mt-8 bg-white/90 border border-gray-200 rounded-2xl p-6 space-y-6 backdrop-blur"> <form method="post" class="space-y-4"> <div> <label class="block text-sm font-medium mb-2 text-zinc-700">Ad Soyad</label> <input name="full_name" value="{{ request.form.full_name or ''}}" required placeholder="Örn: Ayşe Yılmaz" class="w-full rounded-xl bg-white border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"> </div> <div id="password-block" class="space-y-2"> <label class="block text-sm font-medium mb-2 text-zinc-700">Şifre</label> <input name="password" type="password" placeholder="Şifreniz" required class="w-full rounded-xl bg-white border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"> </div> <button type="submit" class="w-full py-3 rounded-xl bg-zinc-900 hover:bg-zinc-900 text-white font-semibold "> Giriş Yap </button> </form> <a href="{{ url_for('guest') }}" class="block w-full text-center py-3 rounded-xl border border-gray-200 text-zinc-700 font-semibold">Giriş yapmadan devam et</a> {% if error %} <div class="text-sm text-rose-500">{{ error }}</div> {% endif %} <div class="text-xs text-zinc-500"> Girişler mezun listesi ile doğrulanmaktadır. Sorun yaşıyorsanız Master ekibi ile iletişime geçin. </div> </div>
+
+<div class="min-h-screen flex items-start md:items-center justify-center px-4 py-8 md:py-12">
+  <div class="w-full max-w-md">
+    <div id="app"""></div>
+  </div>
 </div>
-{% endblock %}
+<style>
+  #app {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+  }
+  #app > div {
+    width: 100%;
+    max-width: 420px;
+  }
+</style>
+
+<script
+  async
+  crossorigin="anonymous"
+  data-clerk-publishable-key="{{ clerk_key }}"
+  src="https://organic-snapper-75.clerk.accounts.dev/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
+  type="text/javascript"
+></script>
+
+<script src="/static/js/clerk.tr.js"></script>
+<script src="/static/js/login.js"></script>

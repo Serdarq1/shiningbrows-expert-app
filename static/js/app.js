@@ -1,15 +1,16 @@
 const sections = [
-  "panel-section",
-  "dashboard-section",
-  "profile-section",
-  "products-section",
-  "orders-section",
-  "feed-section",
-  "campaigns-section",
-  "workshops-section",
-  "experts-section",
-  "media-section",
-  "support-section",
+  "portal",
+  "hizli-bilgiler",
+  "profil",
+  "urun-bilgileri",
+  "urunler",
+  "uzman-akisi",
+  "kampanyalar",
+  "yaklasan-workshoplar",
+  "uzmanlar",
+  "medya",
+  "destek",
+  "shining-world",
 ];
 const FEED_REACTIONS = [
   { id: "like", label: "👍" },
@@ -28,8 +29,17 @@ let currentUserPhone = "";
 let currentUserName = "";
 let isGuestUser = false;
 const orderCart = {};
+let pendingAddProductId = null;
+let orderHistoryPage = 1;
+let orderHistoryHasMore = false;
+const CART_STORAGE_KEY = "sb_order_cart_v1";
+let pendingOpenCart = false;
 
 document.addEventListener("DOMContentLoaded", () => {
+  const searchParams = new URLSearchParams(window.location.search);
+  pendingAddProductId = searchParams.get("add_product");
+  pendingOpenCart = searchParams.get("open_cart") === "1";
+  restoreCart();
   setupButtonHoverEffects();
   setupNavigation();
   setupSidebar();
@@ -60,8 +70,39 @@ document.addEventListener("DOMContentLoaded", () => {
   setupVideoForm();
   setupCampaignAdmin();
   setupOrderActions();
+  loadOrderHistory();
   setupWorkshopSignup();
 });
+
+function saveCart() {
+  const payload = Object.values(orderCart).map((item) => ({
+    product: item.product,
+    qty: item.qty,
+  }));
+  try {
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(payload));
+  } catch (err) {
+    console.warn("Cart save failed", err);
+  }
+}
+
+function restoreCart() {
+  try {
+    const raw = localStorage.getItem(CART_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return;
+    parsed.forEach((item) => {
+      if (!item || !item.product || !item.product.id) return;
+      orderCart[item.product.id] = {
+        product: item.product,
+        qty: Number(item.qty) || 0,
+      };
+    });
+  } catch (err) {
+    console.warn("Cart restore failed", err);
+  }
+}
 
 function setupButtonHoverEffects() {
   const buttons = document.querySelectorAll("button");
@@ -90,7 +131,7 @@ function setupNotificationButton() {
 
 function applyRoleVisibility(role) {
   const allowed = role === "guest"
-    ? new Set(["panel-section", "products-section", "workshops-section"])
+    ? new Set(["portal", "urun-bilgileri", "yaklasan-workshoplar", "shining-world"])
     : null;
   if (!allowed) return;
   document.querySelectorAll(".nav-btn").forEach((btn) => {
@@ -101,7 +142,7 @@ function applyRoleVisibility(role) {
     const target = btn.dataset.target;
     btn.classList.toggle("hidden", !allowed.has(target));
   });
-  switchSection("panel-section");
+  goToSection("portal", { replace: true });
 }
 
 function setupFeedPhotosToggle() {
@@ -149,17 +190,15 @@ function setupNavigation() {
     );
     btn.addEventListener("click", () => {
       const target = btn.dataset.target;
-      switchSection(target);
-      setActiveNav(target);
+      goToSection(target);
       if (typeof window.closeSidebar === "function") {
         window.closeSidebar();
       }
     });
   });
   if (buttons.length) {
-    const first = buttons[0];
-    switchSection(first.dataset.target);
-    setActiveNav(first.dataset.target);
+    const initial = getInitialSection(buttons[0].dataset.target);
+    goToSection(initial, { replace: true });
   }
 }
 
@@ -170,8 +209,7 @@ function setupPanelShortcuts() {
     shortcut.addEventListener("click", () => {
       const target = shortcut.dataset.target;
       if (!target) return;
-      switchSection(target);
-      setActiveNav(target);
+      goToSection(target);
       if (typeof window.closeSidebar === "function") {
         window.closeSidebar();
       }
@@ -179,10 +217,36 @@ function setupPanelShortcuts() {
   });
 }
 
+function getInitialSection(fallback) {
+  const hash = window.location.hash.replace("#", "");
+  if (sections.includes(hash)) return hash;
+  return fallback || "portal";
+}
+
+function goToSection(targetId, options = {}) {
+  if (!targetId) return;
+  switchSection(targetId);
+  setActiveNav(targetId);
+  const url = `#${targetId}`;
+  if (options.replace) {
+    window.history.replaceState({ section: targetId }, "", url);
+  } else {
+    window.history.pushState({ section: targetId }, "", url);
+  }
+}
+
+window.addEventListener("popstate", (event) => {
+  const targetId = (event.state && event.state.section) || window.location.hash.replace("#", "");
+  if (targetId && sections.includes(targetId)) {
+    switchSection(targetId);
+    setActiveNav(targetId);
+  }
+});
+
 function setActiveNav(targetId) {
   const buttons = document.querySelectorAll(".nav-btn");
   buttons.forEach((btn) => {
-    btn.classList.remove("bg-zinc-900", "text-white", "border-zinc-900");
+    btn.classList.remove("bg-zinc-900", "text-white");
     btn.classList.add("text-zinc-700");
     const label = btn.querySelector("span");
     if (label) {
@@ -192,7 +256,7 @@ function setActiveNav(targetId) {
   });
   buttons.forEach((btn) => {
     if (btn.dataset.target !== targetId) return;
-    btn.classList.add("bg-zinc-900", "text-white", "border-zinc-900");
+    btn.classList.add("bg-zinc-900", "text-white");
     btn.classList.remove("text-zinc-700");
     const label = btn.querySelector("span");
     if (label) {
@@ -250,12 +314,10 @@ function setupFeedControls() {
     if (filterBtn) {
       filterBtn.classList.toggle("bg-zinc-900", showWinnerOnly);
       filterBtn.classList.toggle("text-white", showWinnerOnly);
-      filterBtn.classList.toggle("border-zinc-900", showWinnerOnly);
     }
     if (pinBtn) {
       pinBtn.classList.toggle("bg-zinc-900", pinWinner);
       pinBtn.classList.toggle("text-white", pinWinner);
-      pinBtn.classList.toggle("border-zinc-900", pinWinner);
     }
   };
   if (filterBtn) {
@@ -452,9 +514,9 @@ function refreshPasswordUI() {
   const hint = document.getElementById("password-hint");
   const success = document.getElementById("password-success");
   if (!form) return;
-  if (card) card.classList.toggle("hidden", studentHasPassword);
-  form.classList.toggle("hidden", studentHasPassword);
-  if (hint) hint.classList.toggle("hidden", studentHasPassword);
+  if (card) card.classList.remove("hidden");
+  form.classList.remove("hidden");
+  if (hint) hint.classList.remove("hidden");
   if (success) success.classList.add("hidden");
 }
 
@@ -504,6 +566,17 @@ function toBulletItems(input) {
   return items;
 }
 
+function formatPrice(value) {
+  if (value === null || value === undefined || value === "") return "";
+  const number = Number(value);
+  if (Number.isNaN(number)) return String(value);
+  const formatted = new Intl.NumberFormat("tr-TR", {
+    style: "decimal",
+    maximumFractionDigits: 2,
+  }).format(number);
+  return `${formatted} ₺`;
+}
+
 async function loadProducts() {
   const container = document.getElementById("product-list");
   if (!container) return;
@@ -511,6 +584,7 @@ async function loadProducts() {
   const products = await fetchJSON("/api/products");
   products.forEach((product) => {
     const steps = toBulletItems(product.steps);
+    const priceText = formatPrice(product.price);
     const card = document.createElement("div");
     card.className = "rounded-lg bg-gray-50 p-2 space-y-2";
     card.innerHTML = `
@@ -520,6 +594,7 @@ async function loadProducts() {
         </button>
         <div class="flex items-center justify-between">
           <h4 class="font-semibold">${product.name}</h4>
+          ${priceText ? `<span class="text-xs font-semibold">${priceText}</span>` : ""}
         </div>
         <div class="product-details hidden">
           <div class="flex items-center justify-between">
@@ -561,19 +636,23 @@ async function loadOrderProducts() {
   container.innerHTML = "";
   const products = await fetchJSON("/api/products");
   products.forEach((product) => {
+    const priceText = formatPrice(product.price);
     const card = document.createElement("div");
-    card.className = "rounded-lg border border-gray-200 bg-white p-3 space-y-2";
+    card.className = "rounded-lg border border-gray-200 bg-white p-3 space-y-2 cursor-pointer";
     card.innerHTML = `
       <div class="flex items-center justify-center">
         <img src="./static/img/product-images/${product.name}.svg" width="200" alt="${product.name}" />
       </div>
       <div class="">
-        <h4 class="font-semibold">${product.name}</h4>
+        <div class="flex items-center justify-between">
+          <h4 class="font-semibold">${product.name}</h4>
+          ${priceText ? `<span class="text-xs font-semibold">${priceText}</span>` : ""}
+        </div>
+        <p class="text-[11px] text-zinc-500">${product.short_description || ""}</p>
         <button type="button" class="mt-2 px-5 py-2 rounded-full text-[11px] font-semibold text-white bg-zinc-800 hover:bg-zinc-700 transition rounded-md" data-action="add">
           Ekle
         </button>
       </div>
-      <p class="text-[11px] text-zinc-500">${product.short_description || ""}</p>
     `;
     const addBtn = card.querySelector('[data-action="add"]');
     if (addBtn) {
@@ -581,8 +660,27 @@ async function loadOrderProducts() {
         addToCart(product);
       });
     }
+    card.addEventListener("click", (event) => {
+      if (event.target && event.target.closest('[data-action="add"]')) return;
+      window.location.href = `/product/${product.id}`;
+    });
     container.appendChild(card);
   });
+  if (pendingAddProductId) {
+    const match = products.find((product) => String(product.id) === String(pendingAddProductId));
+    if (match) {
+      addToCart(match);
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete("add_product");
+    url.searchParams.delete("open_cart");
+    window.history.replaceState({}, "", url.pathname + url.hash);
+    pendingAddProductId = null;
+  }
+  if (pendingOpenCart) {
+    openCartPanel();
+    pendingOpenCart = false;
+  }
 }
 
 function addToCart(product) {
@@ -593,6 +691,7 @@ function addToCart(product) {
   orderCart[product.id].qty += 1;
   renderCart();
   openCartPanel();
+  saveCart();
 }
 
 function updateCartQty(productId, delta) {
@@ -603,6 +702,7 @@ function updateCartQty(productId, delta) {
     delete orderCart[productId];
   }
   renderCart();
+  saveCart();
 }
 
 function renderCart() {
@@ -612,12 +712,46 @@ function renderCart() {
   cart.innerHTML = "";
   const items = Object.values(orderCart);
   const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
+  const totalAmount = items.reduce((sum, item) => {
+    const price = Number(item.product.price);
+    if (Number.isNaN(price)) return sum;
+    return sum + price * item.qty;
+  }, 0);
   count.textContent = `${totalQty} ürün`;
+  const totalEl = document.getElementById("order-total-amount");
+  const bonusEl = document.getElementById("order-bonus-info");
+  const badgeEl = document.getElementById("order-cart-badge");
+  if (totalEl) {
+    totalEl.textContent = totalAmount ? formatPrice(totalAmount) : "0 ₺";
+  }
+  if (badgeEl) {
+    badgeEl.textContent = String(totalQty);
+    badgeEl.classList.toggle("hidden", totalQty === 0);
+  }
+  if (bonusEl) {
+    const messages = [];
+    items.forEach((item) => {
+      const usage = item.product.usage;
+      if (usage === "professional") {
+        const freeCount = Math.floor(item.qty / 3);
+        if (freeCount > 0) {
+          messages.push(`${freeCount} adet ücretsiz ${item.product.name} gönderilecektir.`);
+        }
+      } else if (usage === "home") {
+        const freeCount = Math.floor(item.qty / 5);
+        if (freeCount > 0) {
+          messages.push(`${freeCount} adet ücretsiz ${item.product.name} gönderilecektir.`);
+        }
+      }
+    });
+    bonusEl.innerHTML = messages.length ? messages.map((m) => `<div>${m}</div>`).join("") : "";
+  }
   if (!items.length) {
     cart.innerHTML = '<p class="text-sm text-zinc-500">Sepetiniz boş.</p>';
     return;
   }
   items.forEach((item) => {
+    const priceText = formatPrice(item.product.price);
     const row = document.createElement("div");
     row.className = "flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm";
     row.innerHTML = `
@@ -627,7 +761,7 @@ function renderCart() {
         </div>
         <div>
           <p class="font-semibold">${item.product.name}</p>
-          <p class="text-xs text-zinc-500">${item.product.short_description || ""}</p>
+          ${priceText ? `<p class="text-[11px]">${priceText}</p>` : ""}
         </div>
       </div>
       <div class="flex items-center gap-2">
@@ -687,21 +821,45 @@ function setupOrderActions() {
   const openCartBtn = document.getElementById("open-cart");
   const closeCartBtn = document.getElementById("close-cart");
   const overlay = document.getElementById("cart-overlay");
+  const confirmOverlay = document.getElementById("order-confirm-overlay");
+  const confirmPanel = document.getElementById("order-confirm-panel");
+  const confirmText = document.getElementById("order-confirm-text");
+  const confirmYes = document.getElementById("order-confirm-yes");
+  const confirmNo = document.getElementById("order-confirm-no");
+  const confirmClose = document.getElementById("order-confirm-close");
+  let confirmBusy = false;
   if (!placeOrderBtn) return;
   renderCart();
   if (openCartBtn) openCartBtn.addEventListener("click", openCartPanel);
   if (closeCartBtn) closeCartBtn.addEventListener("click", closeCartPanel);
   if (overlay) overlay.addEventListener("click", closeCartPanel);
-  placeOrderBtn.addEventListener("click", async () => {
-    const items = Object.values(orderCart);
-    if (!items.length) {
-      showToast("Sepetiniz boş.", { type: "error" });
-      return;
+
+  function openOrderConfirm(message) {
+    if (confirmText) confirmText.textContent = message;
+    if (confirmOverlay) {
+      confirmOverlay.classList.remove("pointer-events-none", "opacity-0");
+      confirmOverlay.classList.add("opacity-100");
     }
-    if (!currentUserPhone) {
-      showToast("Profil kısmından telefon numaranızı doldurunuz.", { type: "error" });
-      return;
+    if (confirmPanel) {
+      confirmPanel.classList.remove("pointer-events-none", "opacity-0");
+      confirmPanel.classList.add("opacity-100");
     }
+  }
+
+  function closeOrderConfirm() {
+    if (confirmOverlay) {
+      confirmOverlay.classList.add("pointer-events-none", "opacity-0");
+      confirmOverlay.classList.remove("opacity-100");
+    }
+    if (confirmPanel) {
+      confirmPanel.classList.add("pointer-events-none", "opacity-0");
+      confirmPanel.classList.remove("opacity-100");
+    }
+  }
+
+  async function submitOrder() {
+    if (confirmBusy) return;
+    confirmBusy = true;
     placeOrderBtn.disabled = true;
     try {
       const order = buildOrderSummary();
@@ -714,7 +872,10 @@ function setupOrderActions() {
       });
       showToast("Siparişiniz alındı.", { type: "success" });
       Object.keys(orderCart).forEach((key) => delete orderCart[key]);
+      saveCart();
       renderCart();
+      closeCartPanel();
+      closeOrderConfirm();
     } catch (err) {
       const message = err && err.message ? err.message : "Sipariş gönderilemedi.";
       if (message === "missing_phone") {
@@ -724,7 +885,38 @@ function setupOrderActions() {
       }
     } finally {
       placeOrderBtn.disabled = false;
+      confirmBusy = false;
     }
+  }
+
+  if (confirmOverlay) confirmOverlay.addEventListener("click", closeOrderConfirm);
+  if (confirmNo) confirmNo.addEventListener("click", closeOrderConfirm);
+  if (confirmClose) confirmClose.addEventListener("click", closeOrderConfirm);
+  if (confirmYes) confirmYes.addEventListener("click", submitOrder);
+
+  placeOrderBtn.addEventListener("click", () => {
+    const items = Object.values(orderCart);
+    if (!items.length) {
+      showToast("Sepetiniz boş.", { type: "error" });
+      return;
+    }
+    if (!currentUserPhone) {
+      showToast("Profil kısmından telefon numaranızı doldurunuz.", { type: "error" });
+      return;
+    }
+    const totalAmount = items.reduce((sum, item) => {
+      const price = Number(item.product.price);
+      if (Number.isNaN(price)) return sum;
+      return sum + price * item.qty;
+    }, 0);
+    const formattedTotal = Number.isFinite(totalAmount)
+      ? totalAmount.toLocaleString("tr-TR")
+      : "0";
+    const message = items
+      .map((item) => `${item.qty} adet ${item.product.name}`)
+      .join(", ")
+      .concat(`. Toplam: ${formattedTotal} ₺. Siparişiniz onaylansın mı?`);
+    openOrderConfirm(message);
   });
 }
 
@@ -799,12 +991,14 @@ async function loadRules() {
   const rules = await fetchJSON("/api/rules");
   rules.forEach((rule) => {
     const item = document.createElement("div");
+    const description = rule.description || "";
+    const formattedDescription = description.includes("•") ? description.split("•").map((chunk) => chunk.trim()).filter(Boolean).map((chunk) => `• ${chunk}`).join("<br>") : description;
     item.className = "p-3 border border-gray-200 rounded-lg";
     item.innerHTML = `
       <div class="flex items-center justify-between">
-        <h4 class="font-semibold"><span class="font-medium text-gray-500">Kural Türü:</span> ${rule.title} </h4>
+        <h4 class="font-semibold"> ${rule.title} </h4>
       </div>
-      <p class="text-sm text-zinc-600">${rule.description}</p>
+      <p class="text-sm text-zinc-600">${formattedDescription}</p>
     `;
     container.appendChild(item);
   });
@@ -1455,6 +1649,51 @@ function setupAvatarForm() {
       showToast("Profil fotoğrafı yüklenemedi.", { type: "error" });
     }
   });
+}
+
+async function loadOrderHistory(page = 1) {
+  const list = document.getElementById("order-history-list");
+  const pageEl = document.getElementById("order-history-page");
+  const totalEl = document.getElementById("order-history-total");
+  const prevBtn = document.getElementById("order-history-prev");
+  const nextBtn = document.getElementById("order-history-next");
+  if (!list || !pageEl || !totalEl || !prevBtn || !nextBtn) return;
+  try {
+    const result = await fetchJSON(`/api/orders?page=${page}&page_size=10`);
+    const items = result.items || [];
+    orderHistoryPage = result.page || page;
+    orderHistoryHasMore = Boolean(result.has_more);
+    pageEl.textContent = String(orderHistoryPage);
+    totalEl.textContent = orderHistoryHasMore ? "?" : String(orderHistoryPage);
+    list.innerHTML = "";
+    if (!items.length) {
+      list.innerHTML = '<p class="text-sm text-zinc-500">Henüz sipariş yok.</p>';
+    } else {
+      items.forEach((item) => {
+        const createdAt = item.created_at ? new Date(item.created_at) : null;
+        const dateLabel = createdAt && !Number.isNaN(createdAt.getTime())
+          ? createdAt.toLocaleDateString("tr-TR")
+          : "-";
+        const row = document.createElement("div");
+        row.className = "p-3 rounded-lg border border-gray-200 bg-white text-sm space-y-1";
+        row.innerHTML = `
+          <div class="flex items-center justify-between">
+            <p class="font-semibold">Sipariş</p>
+            <span class="text-xs text-zinc-500">${dateLabel}</span>
+          </div>
+          <p class="text-zinc-700">${item.order_text || "-"}</p>
+          <div class="text-xs text-zinc-500">Toplam adet: ${item.total_qty ?? "-"}</div>
+        `;
+        list.appendChild(row);
+      });
+    }
+    prevBtn.disabled = orderHistoryPage <= 1;
+    nextBtn.disabled = !orderHistoryHasMore;
+  } catch (err) {
+    list.innerHTML = '<p class="text-sm text-zinc-500">Siparişler yüklenemedi.</p>';
+  }
+  prevBtn.onclick = () => loadOrderHistory(Math.max(1, orderHistoryPage - 1));
+  nextBtn.onclick = () => loadOrderHistory(orderHistoryPage + 1);
 }
 
 function setupBookForm() {

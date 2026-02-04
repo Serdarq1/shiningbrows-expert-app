@@ -2,6 +2,7 @@ import io
 import os
 import uuid
 import bcrypt
+import json
 from datetime import UTC, datetime
 from tempfile import NamedTemporaryFile
 import ssl
@@ -9,10 +10,13 @@ import re
 import socket
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from http.cookiejar import CookieJar
 from urllib.request import build_opener, HTTPCookieProcessor, HTTPSHandler
 from typing import Any, Dict, List, Optional
+
+import jwt
+from jwt import PyJWKClient
 
 from dotenv import load_dotenv
 from flask import (
@@ -62,7 +66,7 @@ except ImportError:
     Client = None
     create_client = None
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=False)
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
@@ -79,7 +83,11 @@ ALLOWED_EXPERT_STATUSES = {"shining expert", "master trainer"}
 MAX_VIDEO_MB = int(os.getenv("MAX_VIDEO_MB", "250"))
 DISABLE_SSL_VERIFY = os.getenv("DISABLE_SSL_VERIFY", "false").lower() in ("1", "true", "yes")
 DOWNLOAD_TIMEOUT_SEC = int(os.getenv("DOWNLOAD_TIMEOUT_SEC", "60"))
-
+CLERK_PUBLISHABLE_KEY = os.getenv("CLERK_PUBLISHABLE_KEY", "")
+CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY", "")
+CLERK_ISSUER = os.getenv("CLERK_ISSUER", "")
+CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE", "")
+CLERK_API_VERSION = os.getenv("CLERK_API_VERSION", "")
 
 supabase: Optional[Client] = None
 if SUPABASE_URL and SUPABASE_KEY and create_client:
@@ -218,6 +226,129 @@ def extract_drive_file_id(url: str) -> Optional[str]:
         if file_id:
             return file_id
     return None
+
+
+def _normalize_name(name: str) -> str:
+    return " ".join((name or "").strip().lower().split())
+
+
+def _get_clerk_jwks_client() -> Optional[PyJWKClient]:
+    if not CLERK_ISSUER:
+        return None
+    jwks_url = f"{CLERK_ISSUER.rstrip('/')}/.well-known/jwks.json"
+    return PyJWKClient(jwks_url)
+
+
+def _verify_clerk_token(token: str) -> Optional[Dict[str, Any]]:
+    if not token:
+        return None
+    jwks_client = _get_clerk_jwks_client()
+    if not jwks_client:
+        return None
+    try:
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        options = {"verify_aud": bool(CLERK_AUDIENCE)}
+        decoded = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            issuer=CLERK_ISSUER or None,
+            audience=CLERK_AUDIENCE or None,
+            options=options,
+        )
+        return decoded
+    except Exception as exc:
+        print("Clerk token verify failed:", exc)
+        return None
+
+
+def _fetch_clerk_user(user_id: str) -> Optional[Dict[str, Any]]:
+    if not user_id or not CLERK_SECRET_KEY:
+        return None
+    url = f"https://api.clerk.com/v1/users/{user_id}"
+    headers = {
+        "Authorization": f"Bearer {CLERK_SECRET_KEY}",
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (compatible; ClerkBackend/1.0)",
+    }
+    if CLERK_API_VERSION:
+        headers["Clerk-Version"] = CLERK_API_VERSION
+    req = Request(url, headers=headers)
+    try:
+        with urlopen(req, timeout=15) as resp:
+            data = resp.read().decode("utf-8")
+            return json.loads(data)
+    except HTTPError as exc:
+        headers = dict(exc.headers or {})
+        error_body = exc.read().decode('utf-8')
+        print(f"User fetch failed: {exc.code} - {error_body}")
+    except Exception as exc:
+        print("Clerk user fetch failed:", exc)
+    return None
+
+
+def _clerk_user_email_and_name(user: Dict[str, Any]) -> Dict[str, str]:
+    email = ""
+    full_name = ""
+    if not user:
+        return {"email": "", "full_name": ""}
+    email_addresses = user.get("email_addresses") or []
+    primary_email_id = user.get("primary_email_address_id")
+    if primary_email_id and email_addresses:
+        for addr in email_addresses:
+            if addr.get("id") == primary_email_id:
+                email = addr.get("email_address") or ""
+                break
+    if not email and email_addresses:
+        email = email_addresses[0].get("email_address") or ""
+    full_name = user.get("full_name") or ""
+    if not full_name:
+        first = user.get("first_name") or ""
+        last = user.get("last_name") or ""
+        full_name = f"{first} {last}".strip()
+    return {"email": email.strip().lower(), "full_name": full_name.strip()}
+
+
+def _clerk_guest_profile(user: Dict[str, Any]) -> Dict[str, str]:
+    info = _clerk_user_email_and_name(user or {})
+    email = info.get("email", "")
+    full_name = info.get("full_name", "")
+    username = (user or {}).get("username") or ""
+    image_url = (
+        (user or {}).get("image_url")
+        or (user or {}).get("profile_image_url")
+        or (user or {}).get("avatar_url")
+        or ""
+    )
+    if not full_name:
+        if username:
+            full_name = username
+        elif email and "@" in email:
+            full_name = email.split("@", 1)[0]
+    return {
+        "name": full_name.strip() or "Misafir",
+        "email": email,
+        "username": username,
+        "avatar_url": image_url,
+    }
+
+
+def _parse_steps(steps: Any) -> List[str]:
+    if not steps:
+        return []
+    if isinstance(steps, list):
+        items: List[str] = []
+        for raw in steps:
+            cleaned = re.sub(r"^•\s*", "", str(raw).strip())
+            if cleaned:
+                items.append(cleaned)
+        return items
+    items = []
+    for raw in str(steps).splitlines():
+        cleaned = re.sub(r"^•\s*", "", raw.strip())
+        if cleaned:
+            items.append(cleaned)
+    return items
 
 
 def _download_to_temp(response, content_type: str) -> Dict[str, Any]:
@@ -412,12 +543,54 @@ def login() -> Any:
             else:
                 error = "Uzman bulunamadı. Bilgilerinizi kontrol edin."
 
-    return render_template("login.html", error=error)
+    return render_template("login.html", error=error, clerk_key=CLERK_PUBLISHABLE_KEY)
+
+
+@app.route("/sign-up")
+def sign_up() -> Any:
+    return render_template("sign_up.html", clerk_key=CLERK_PUBLISHABLE_KEY)
+
+
+@app.route("/api/clerk/authorize", methods=["POST"])
+def clerk_authorize() -> Any:
+    payload = request.get_json() or {}
+    token = (payload.get("token") or "").strip()
+    decoded = _verify_clerk_token(token)
+    if not decoded:
+        return jsonify({"error": "invalid_token"}), 401
+    user_id = decoded.get("sub") or ""
+    clerk_user = _fetch_clerk_user(user_id)
+    if not clerk_user:
+        return jsonify({"error": "user_not_found"}), 401
+    info = _clerk_user_email_and_name(clerk_user)
+    email = info.get("email") or ""
+    full_name = info.get("full_name") or ""
+    if not email or not full_name:
+        return jsonify({"error": "missing_identity"}), 400
+    students = fetch_table("shining_brows_student_database", {"email": email})
+    matched = students[0] if students else None
+    if not matched:
+        session.pop("student_id", None)
+        session["guest"] = True
+        session["guest_profile"] = _clerk_guest_profile(clerk_user)
+        return jsonify({"ok": True, "guest": True})
+    session["student_id"] = matched["id"]
+    session.pop("guest", None)
+    if supabase and not matched.get("clerk_user_id") and user_id:
+        try:
+            supabase.table("shining_brows_student_database").update(
+                {"clerk_user_id": user_id}
+            ).eq("id", matched["id"]).execute()
+        except Exception as exc:
+            print("Failed to save clerk_user_id:", exc)
+    return jsonify({"ok": True, "student_id": matched["id"]})
 
 
 @app.route("/logout", methods=["GET", "POST"])
 def logout() -> Any:
     session.clear()
+    if CLERK_PUBLISHABLE_KEY:
+        return render_template("logout.html", clerk_key=CLERK_PUBLISHABLE_KEY)
     return redirect(url_for("login"))
 
 @app.route("/guest")
@@ -437,14 +610,17 @@ def dashboard() -> Any:
 @app.route("/api/student")
 def api_student() -> Any:
     if session.get("guest"):
+        guest_profile = session.get("guest_profile") or {}
         return jsonify(
             {
                 "id": None,
-                "name": "Misafir",
+                "name": guest_profile.get("name") or "Misafir",
                 "role": "guest",
+                "email": guest_profile.get("email") or "",
+                "username": guest_profile.get("username") or "",
                 "phone": "",
                 "has_password": True,
-                "avatar_url": "../static/img/logo-transparent.png",
+                "avatar_url": guest_profile.get("avatar_url") or "../static/img/logo-transparent.png",
                 "expert_status": "",
             }
         )
@@ -515,8 +691,41 @@ def api_support() -> Any:
 
 # ---------- Orders ----------
 
-@app.route("/api/orders", methods=["POST"])
+@app.route("/api/orders", methods=["POST", "GET"])
 def api_orders() -> Any:
+    if request.method == "GET":
+        student = get_current_student()
+        if not student:
+            return jsonify({"items": [], "page": 1, "page_size": 10, "has_more": False}), 200
+        if not supabase:
+            return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+        try:
+            page = int(request.args.get("page", "1"))
+        except ValueError:
+            page = 1
+        try:
+            page_size = int(request.args.get("page_size", "10"))
+        except ValueError:
+            page_size = 10
+        page = max(page, 1)
+        page_size = min(max(page_size, 1), 50)
+        start = (page - 1) * page_size
+        end = start + page_size - 1
+        try:
+            response = (
+                supabase.table("orders")
+                .select("id,order_text,total_qty,status,created_at")
+                .eq("student_id", student["id"])
+                .order("created_at", desc=True)
+                .range(start, end)
+                .execute()
+            )
+            items = getattr(response, "data", []) or []
+            has_more = len(items) == page_size
+            return jsonify({"items": items, "page": page, "page_size": page_size, "has_more": has_more}), 200
+        except Exception as exc:
+            print("Order history fetch failed:", exc)
+            return jsonify({"error": "Siparişler yüklenemedi."}), 500
     student = get_current_student()
     if not student:
         return jsonify({"error": "Oturum bulunamadı"}), 401
@@ -536,8 +745,9 @@ def api_orders() -> Any:
 
     account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
     auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
-    from_number = os.getenv("TWILIO_WHATSAPP_NUMBER", "")
-    if not account_sid or not auth_token or not from_number:
+    from_sms = os.getenv("TWILIO_SMS_NUMBER", "")
+    admin_phone = os.getenv("ADMIN_ORDER_PHONE", "+905544610207")
+    if not account_sid or not auth_token or not from_sms:
         return jsonify({"error": "SMS servis bilgileri eksik."}), 500
 
     if total_qty is None:
@@ -571,8 +781,8 @@ def api_orders() -> Any:
     try:
         client = TwilioClient(account_sid, auth_token)
         message = client.messages.create(
-            from_=f"whatsapp:{from_number}",
-            to=f"whatsapp:{phone}",
+            from_=from_sms,
+            to=phone,
             body=body,
         )
         admin_body = (
@@ -581,8 +791,8 @@ def api_orders() -> Any:
             f"Toplam adet: {total_qty}."
         )
         client.messages.create(
-            from_=f"whatsapp:{from_number}",
-            to="whatsapp:+905544610207",
+            from_=from_sms,
+            to=admin_phone,
             body=admin_body,
         )
         return jsonify({"ok": True, "sid": message.sid})
@@ -1742,19 +1952,23 @@ def products():
             name = (payload.get("name") or "").strip()
             short_description = (payload.get("short_description") or "").strip()
             steps = (payload.get("steps") or "").strip()
+            usage = (payload.get("usage") or "").strip()
+            price = payload.get("price")
             if not name or not short_description:
                 return jsonify({"error": "name kısmı bulunamadı."}), 400
             record = {
                 "name": name,
                 "short_description": short_description,
                 "steps": steps,
+                "usage": usage,
+                "price": price,
             }
             response = supabase.table("products").insert(record).execute()
             inserted = getattr(response, "data", []) or []
             return jsonify(inserted[0 if inserted else record]), 201
         response = (
             supabase.table("products")
-            .select("id,name,short_description,steps")
+            .select("id,name,short_description,steps,price,usage")
             .execute()
         )
         question = getattr(response, "data", []) or []
@@ -1762,6 +1976,52 @@ def products():
     except Exception as e:
         print("Failed to fetch ", e)
         return jsonify([]), 500
+
+
+@app.route("/product/<product_id>")
+def product_detail(product_id: str) -> Any:
+    if "student_id" not in session and not session.get("guest"):
+        return redirect(url_for("login"))
+    if not supabase:
+        return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+    try:
+        response = (
+            supabase.table("products")
+            .select("id,name,short_description,steps,price,usage")
+            .eq("id", product_id)
+            .limit(1)
+            .execute()
+        )
+        data = getattr(response, "data", []) or []
+        if not data:
+            return jsonify({"error": "Ürün bulunamadı."}), 404
+        product = data[0]
+        steps = _parse_steps(product.get("steps") or "")
+        related: List[Dict[str, Any]] = []
+        usage = product.get("usage")
+        if usage:
+            try:
+                rel_resp = (
+                    supabase.table("products")
+                    .select("id,name,short_description,price,usage")
+                    .eq("usage", usage)
+                    .neq("id", product_id)
+                    .limit(4)
+                    .execute()
+                )
+                related = getattr(rel_resp, "data", []) or []
+            except Exception as exc:
+                print("Related products fetch failed:", exc)
+        return render_template(
+            "product.html",
+            product=product,
+            steps=steps,
+            related=related,
+            image_filename=f"img/product-images/{product.get('name','')}.svg",
+        )
+    except Exception as exc:
+        print("Product detail fetch failed:", exc)
+        return jsonify({"error": "Ürün yüklenemedi."}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
