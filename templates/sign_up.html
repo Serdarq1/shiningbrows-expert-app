@@ -1,35 +1,39 @@
-<div class="min-h-screen flex items-start md:items-center justify-center px-4 py-8 md:py-12">
-  <div class="w-full max-w-md">
-    <div id="app"></div>
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="min-h-screen flex items-start md:items-center justify-center px-4 py-8 md:py-12">
+    <div class="w-full max-w-md">
+      <div id="app"></div>
+    </div>
   </div>
-</div>
-<style>
-  #app {
-    width: 100%;
-    display: flex;
-    justify-content: center;
-  }
-  #app > div {
-    width: 100%;
-    max-width: 420px;
-  }
-  @media (max-width: 640px) {
-    body {
-      background: #f8f7f4;
+  <style>
+    #app {
+      width: 100%;
+      display: flex;
+      justify-content: center;
     }
     #app > div {
-      max-width: 360px;
+      width: 100%;
+      max-width: 420px;
     }
-  }
-</style>
+    @media (max-width: 640px) {
+      body {
+        background: #f8f7f4;
+      }
+      #app > div {
+        max-width: 360px;
+      }
+    }
+  </style>
 
-<script
-  async
-  crossorigin="anonymous"
-  data-clerk-publishable-key="{{ clerk_key }}"
-  src="https://organic-snapper-75.clerk.accounts.dev/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
-  type="text/javascript"
-></script>
+  <script
+    async
+    crossorigin="anonymous"
+    data-clerk-publishable-key="{{ clerk_key }}"
+    src="https://organic-snapper-75.clerk.accounts.dev/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
+    type="text/javascript"
+  ></script>
 
-<script src="/static/js/clerk.tr.js"></script>
-<script src="/static/js/sign-up.js"></script>
+  <script src="/static/js/clerk.tr.js"></script>
+  <script src="/static/js/sign-up.js"></script>
+{% endblock %}
