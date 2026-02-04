@@ -1,7 +1,7 @@
 {
   "name": "Shining Brows Uzman Portalı",
   "short_name": "SB Expert Portal",
-  "start_url": "https://shining-brows-experts.onrender.com/login",
+  "start_url": "https://experts.shiningbrowsacademy.com/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
