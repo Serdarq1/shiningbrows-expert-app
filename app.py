@@ -1712,8 +1712,21 @@ def workshops_signup() -> Any:
     account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
     auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
     from_number = os.getenv("TWILIO_WHATSAPP_NUMBER", "")
-    if not account_sid or not auth_token or not from_number:
+    sms_number = os.getenv("TWILIO_SMS_NUMBER", "")
+    if not account_sid or not auth_token or (not from_number and not sms_number):
         return jsonify({"error": "SMS servis bilgileri eksik."}), 500
+
+    def normalize_whatsapp(number: str) -> str:
+        number = (number or "").strip()
+        if not number:
+            return ""
+        return number if number.startswith("whatsapp:") else f"whatsapp:{number}"
+
+    def strip_whatsapp(number: str) -> str:
+        number = (number or "").strip()
+        if number.startswith("whatsapp:"):
+            return number.split("whatsapp:", 1)[1]
+        return number
 
     body = (
         "Workshop başvurusu alındı.\n"
@@ -1741,12 +1754,31 @@ def workshops_signup() -> Any:
     try:
         client = TwilioClient(account_sid, auth_token)
         admin_numbers = ["whatsapp:+905465330367", "whatsapp:+905544610207"]
-        for admin in admin_numbers:
-            client.messages.create(
-                from_=f"whatsapp:{from_number}",
-                to=admin,
-                body=body,
-            )
+        send_errors = []
+        whatsapp_from = normalize_whatsapp(from_number)
+        if whatsapp_from:
+            try:
+                for admin in admin_numbers:
+                    client.messages.create(
+                        from_=whatsapp_from,
+                        to=normalize_whatsapp(admin),
+                        body=body,
+                    )
+            except Exception as exc:
+                send_errors.append(f"whatsapp: {exc}")
+        if sms_number:
+            try:
+                for admin in admin_numbers:
+                    client.messages.create(
+                        from_=sms_number,
+                        to=strip_whatsapp(admin),
+                        body=body,
+                    )
+            except Exception as exc:
+                send_errors.append(f"sms: {exc}")
+        if send_errors:
+            print("Workshop signup SMS failed:", "; ".join(send_errors))
+            return jsonify({"error": "Başvuru gönderilemedi."}), 500
         return jsonify({"ok": True})
     except Exception as exc:
         print("Workshop signup SMS failed:", exc)

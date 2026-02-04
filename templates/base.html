@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#ffffff">
   <title>Shining Brows Uzman Portalı</title>
   <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
   <link rel="icon" href="{{ url_for('static', filename='img/sb-logo.png') }}">
@@ -55,6 +56,16 @@
       background:
         radial-gradient(900px 600px at 10% -10%, rgba(202, 162, 74, 0.18), transparent 60%),
         linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+    }
+
+    html, body {
+      background-color: #ffffff;
+    }
+
+    @media (max-width: 768px) {
+      body {
+        background: #ffffff;
+      }
     }
 
     h1, h2, h3, h4, .font-display {
