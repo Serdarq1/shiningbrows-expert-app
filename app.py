@@ -662,6 +662,11 @@ def web_manifest() -> Any:
     return send_from_directory(os.path.join(app.root_path, "static"), "manifest.json")
 
 
+@app.route("/.well-known/assetlinks.json")
+def assetlinks() -> Any:
+    return send_from_directory(os.path.join(app.root_path, ".well-known"), "assetlinks.json")
+
+
 # ---------- Support ----------
 
 @app.route("/api/support", methods=["POST"])
