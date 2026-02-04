@@ -1728,6 +1728,20 @@ def workshops_signup() -> Any:
             return number.split("whatsapp:", 1)[1]
         return number
 
+    def normalize_workshop_date(raw_date: str) -> str:
+        raw_date = (raw_date or "").strip()
+        if not raw_date:
+            return ""
+        if "." in raw_date:
+            parts = raw_date.split(".")
+            if len(parts) == 3:
+                day, month, year = [p.zfill(2) for p in parts]
+                if len(year) == 4:
+                    return f"{year}-{month}-{day}"
+        return raw_date
+
+    normalized_date = normalize_workshop_date(date)
+
     body = (
         "Workshop başvurusu alındı.\n"
         f"İsim: {name}\n"
@@ -1742,7 +1756,7 @@ def workshops_signup() -> Any:
                 "name": name,
                 "phone": phone,
                 "title": title,
-                "date": date,
+                "date": normalized_date,
                 "location": location,
                 "created_at": datetime.now(UTC).isoformat(),
             }
