@@ -72,6 +72,7 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "Images")
 SUPABASE_BOOK_BUCKET = os.getenv("SUPABASE_BOOK_BUCKET", "books")
@@ -90,10 +91,11 @@ CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE", "")
 CLERK_API_VERSION = os.getenv("CLERK_API_VERSION", "")
 
 supabase: Optional[Client] = None
-if SUPABASE_URL and SUPABASE_KEY and create_client:
+supabase_key = SUPABASE_SERVICE_KEY or SUPABASE_KEY
+if SUPABASE_URL and supabase_key and create_client:
     try:
         # Disable proxy usage for Supabase if desired (common cause of proxy errors).
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        supabase = create_client(SUPABASE_URL, supabase_key)
         print("Supabase client created")
     except Exception as exc:
         supabase = None
