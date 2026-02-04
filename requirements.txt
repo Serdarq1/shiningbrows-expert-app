@@ -7,3 +7,4 @@ pillow-heif==0.18.0
 twilio
 bcrypt
 pyjwt==2.10.1
+cryptography==42.0.8
