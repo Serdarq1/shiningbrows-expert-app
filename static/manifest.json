@@ -1,11 +1,12 @@
 {
   "name": "Shining Brows Uzman Portalı",
-  "short_name": "SB Expert Portal",
-  "start_url": "https://experts.shiningbrowsacademy.com/",
+  "short_name": "SB Expert",
+  "description": "Shining Brows uzman portalı ile tüm eğitim içeriğine, diğer uzmanların bilgilerine, E-kitaba ve daha fazlasına tek tıkla erişin.",
+  "start_url": "/login",
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#ec4899",
+  "theme_color": "#ffffff",
   "icons": [
     {
       "src": "/static/logos/icon-192.png",
@@ -20,7 +21,6 @@
       "purpose": "any maskable"
     }
   ],
-  "id": "sb_expert_portal",
-  "description": "Shining Brows uzman portalı ile tüm eğitim içeriğine, diğer uzmanların bilgilerine, E-kitaba ve daha fazlasına tek tıkla erişin.",
+  "id": "/",
   "lang": "tr"
 }

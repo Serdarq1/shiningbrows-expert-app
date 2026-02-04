@@ -657,6 +657,11 @@ def service_worker() -> Any:
     return send_from_directory(os.path.join(app.root_path, "static", "js"), "service-worker.js")
 
 
+@app.route("/manifest.json")
+def web_manifest() -> Any:
+    return send_from_directory(os.path.join(app.root_path, "static"), "manifest.json")
+
+
 # ---------- Support ----------
 
 @app.route("/api/support", methods=["POST"])
