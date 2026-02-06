@@ -1,8 +1,11 @@
-[{
-      "relation": ["delegate_permission/common.handle_all_urls"],
-      "target": {
-        "namespace": "android_app",
-        "package_name": "com.shiningbrowsacademy.experts.twa",
-        "sha256_cert_fingerprints": ["4B:6C:CC:5A:46:F7:86:BD:65:BD:11:3D:39:A8:64:25:34:68:6E:ED:9F:ED:78:67:C5:51:5B:75:C8:D5:0C:5C"]
-      }
-    }]
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.shiningbrowsacademy.experts.twa",
+      "sha256_cert_fingerprints":
+        ["24:BB:1F:7D:96:52:32:16:9D:59:CE:47:42:DF:DE:FF:AF:93:28:CE:4C:C2:B9:FE:C9:6B:90:93:06:92:05:0F"]
+    }
+  }
+]
