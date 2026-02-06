@@ -545,12 +545,21 @@ def login() -> Any:
             else:
                 error = "Uzman bulunamadı. Bilgilerinizi kontrol edin."
 
-    return render_template("login.html", error=error, clerk_key=CLERK_PUBLISHABLE_KEY)
+    return render_template(
+        "login.html",
+        error=error,
+        clerk_key=CLERK_PUBLISHABLE_KEY,
+        clerk_issuer=CLERK_ISSUER,
+    )
 
 
 @app.route("/sign-up")
 def sign_up() -> Any:
-    return render_template("sign_up.html", clerk_key=CLERK_PUBLISHABLE_KEY)
+    return render_template(
+        "sign_up.html",
+        clerk_key=CLERK_PUBLISHABLE_KEY,
+        clerk_issuer=CLERK_ISSUER,
+    )
 
 
 @app.route("/api/clerk/authorize", methods=["POST"])
@@ -592,7 +601,11 @@ def clerk_authorize() -> Any:
 def logout() -> Any:
     session.clear()
     if CLERK_PUBLISHABLE_KEY:
-        return render_template("logout.html", clerk_key=CLERK_PUBLISHABLE_KEY)
+        return render_template(
+            "logout.html",
+            clerk_key=CLERK_PUBLISHABLE_KEY,
+            clerk_issuer=CLERK_ISSUER,
+        )
     return redirect(url_for("login"))
 
 @app.route("/guest")
@@ -606,7 +619,11 @@ def guest() -> Any:
 def dashboard() -> Any:
     if "student_id" not in session and not session.get("guest"):
         return redirect(url_for("login"))
-    return render_template("dashboard.html")
+    return render_template(
+        "dashboard.html",
+        clerk_key=CLERK_PUBLISHABLE_KEY,
+        clerk_issuer=CLERK_ISSUER,
+    )
 
 
 @app.route("/api/student")
@@ -711,6 +728,7 @@ def api_orders() -> Any:
             return jsonify({"items": [], "page": 1, "page_size": 10, "has_more": False}), 200
         if not supabase:
             return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+        is_admin = student.get("role") in ELEVATED_ROLES
         try:
             page = int(request.args.get("page", "1"))
         except ValueError:
@@ -724,17 +742,41 @@ def api_orders() -> Any:
         start = (page - 1) * page_size
         end = start + page_size - 1
         try:
-            response = (
+            query = (
                 supabase.table("orders")
-                .select("id,order_text,total_qty,status,created_at")
-                .eq("student_id", student["id"])
+                .select("id,student_id,phone,order_text,total_qty,status,created_at")
                 .order("created_at", desc=True)
                 .range(start, end)
-                .execute()
             )
+            if not is_admin:
+                query = query.eq("student_id", student["id"])
+            response = query.execute()
             items = getattr(response, "data", []) or []
+            if is_admin and items:
+                student_ids = {item.get("student_id") for item in items if item.get("student_id") is not None}
+                if student_ids:
+                    try:
+                        student_response = (
+                            supabase.table("shining_brows_student_database")
+                            .select("id,name,email,phone")
+                            .in_("id", list(student_ids))
+                            .execute()
+                        )
+                        student_rows = getattr(student_response, "data", []) or []
+                        student_map = {row.get("id"): row for row in student_rows}
+                        for item in items:
+                            sid = item.get("student_id")
+                            if sid in student_map:
+                                row = student_map[sid]
+                                item["student_name"] = row.get("name")
+                                item["student_email"] = row.get("email")
+                                item["student_phone"] = row.get("phone") or item.get("phone")
+                    except Exception as exc:
+                        print("Order student lookup failed:", exc)
             has_more = len(items) == page_size
-            return jsonify({"items": items, "page": page, "page_size": page_size, "has_more": has_more}), 200
+            return jsonify(
+                {"items": items, "page": page, "page_size": page_size, "has_more": has_more, "admin": is_admin}
+            ), 200
         except Exception as exc:
             print("Order history fetch failed:", exc)
             return jsonify({"error": "Siparişler yüklenemedi."}), 500

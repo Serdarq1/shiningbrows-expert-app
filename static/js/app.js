@@ -65,6 +65,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupProfileForm();
   setupAvatarForm();
   setupPasswordForm();
+  setupClerkAccount();
   setupWorkshopAdmin();
   setupBookForm();
   setupVideoForm();
@@ -915,7 +916,7 @@ function setupOrderActions() {
     const message = items
       .map((item) => `${item.qty} adet ${item.product.name}`)
       .join(", ")
-      .concat(`. Toplam: ${formattedTotal} ₺. Siparişiniz onaylansın mı?`);
+      .concat(`. Toplam: ${formattedTotal} ₺. Siparişiniz onaylansın mı? Not: Sipariş onayından sonra size Whatsapp üzerinden Mail-order linki gönderilecektir.`);
     openOrderConfirm(message);
   });
 }
@@ -1592,6 +1593,59 @@ function setupPasswordForm() {
   toggle();
 }
 
+async function setupClerkAccount() {
+  const profileContainer = document.getElementById("clerk-account");
+  const sidebarContainer = document.getElementById("clerk-sidebar-button");
+  const container = sidebarContainer || profileContainer;
+  if (!container) return;
+  const waitForClerk = (maxTries = 40, delayMs = 150) => new Promise((resolve) => {
+    let tries = 0;
+    const tick = () => {
+      if (typeof Clerk !== "undefined") return resolve(true);
+      tries += 1;
+      if (tries >= maxTries) return resolve(false);
+      setTimeout(tick, delayMs);
+    };
+    tick();
+  });
+  const ready = await waitForClerk();
+  if (!ready) {
+    container.innerHTML = '<p class="text-sm text-zinc-500">Clerk yüklenemedi.</p>';
+    return;
+  }
+  const appearance = {
+    variables: {
+      borderRadius: "8px",
+      fontFamily: "Manrope, ui-sans-serif, system-ui",
+      colorBackground: "#ffffff",
+    },
+    elements: {
+      card: "shadow-none border border-gray-200 rounded-xl",
+      formFieldInput: "rounded-lg",
+      dividerLine: "bg-gray-200",
+    },
+  };
+  const loadOptions = { appearance };
+  if (window.trTR) {
+    loadOptions.localization = window.trTR;
+  }
+  try {
+    await Clerk.load(loadOptions);
+    if (!Clerk.isSignedIn) {
+      container.innerHTML = '<p class="text-sm text-zinc-500">Clerk oturumu bulunamadı.</p>';
+      return;
+    }
+    container.innerHTML = '<div id="clerk-user-button"></div>';
+    const userButtonDiv = document.getElementById("clerk-user-button");
+    if (userButtonDiv) Clerk.mountUserButton(userButtonDiv);
+    if (profileContainer && profileContainer !== container) {
+      profileContainer.innerHTML = '<p class="text-sm text-zinc-500">Hesap menüsü sol menüde görünüyor.</p>';
+    }
+  } catch (err) {
+    console.error("Clerk load failed", err);
+  }
+}
+
 function setupProfileForm() {
   const form = document.getElementById("profile-form");
   const success = document.getElementById("profile-success");
@@ -1661,6 +1715,7 @@ async function loadOrderHistory(page = 1) {
   try {
     const result = await fetchJSON(`/api/orders?page=${page}&page_size=10`);
     const items = result.items || [];
+    const isAdminView = Boolean(result.admin) || isElevatedRole();
     orderHistoryPage = result.page || page;
     orderHistoryHasMore = Boolean(result.has_more);
     pageEl.textContent = String(orderHistoryPage);
@@ -1674,6 +1729,10 @@ async function loadOrderHistory(page = 1) {
         const dateLabel = createdAt && !Number.isNaN(createdAt.getTime())
           ? createdAt.toLocaleDateString("tr-TR")
           : "-";
+        const customerName = item.student_name ? toTitleCase(item.student_name) : "";
+        const customerPhone = item.student_phone || item.phone || "";
+        const customerEmail = item.student_email || "";
+        const customerDetails = [customerName, customerPhone, customerEmail].filter(Boolean).join(" · ");
         const row = document.createElement("div");
         row.className = "p-3 rounded-lg border border-gray-200 bg-white text-sm space-y-1";
         row.innerHTML = `
@@ -1681,6 +1740,7 @@ async function loadOrderHistory(page = 1) {
             <p class="font-semibold">Sipariş</p>
             <span class="text-xs text-zinc-500">${dateLabel}</span>
           </div>
+          ${isAdminView && customerDetails ? `<div class="text-xs text-zinc-500">${customerDetails}</div>` : ""}
           <p class="text-zinc-700">${item.order_text || "-"}</p>
           <div class="text-xs text-zinc-500">Toplam adet: ${item.total_qty ?? "-"}</div>
         `;

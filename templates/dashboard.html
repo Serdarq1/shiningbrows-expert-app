@@ -7,15 +7,19 @@
 <aside id="sidebar" class="fixed top-0 left-0 h-full w-64 overflow-y-auto bg-white border-r border-gray-200 shadow-xl transform -translate-x-full transition-transform duration-300 z-40">
   <div class="px-4 py-6 space-y-6">
     <div class="flex items-center gap-3">
-      <div class="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden text-xl">
-        <img src="../static/img/logo-transparent.png" alt="Profil görseli" class="w-full h-full object-cover" id="sidebar-profile-logo" />
+        {% if clerk_key %}
+        <div id="clerk-sidebar-button" class="flex items-center"></div>
+        {% else %}
+        <div class="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden text-xl">
+          <img src="../static/img/logo-transparent.png" alt="Profil görseli" class="w-full h-full object-cover" id="sidebar-profile-logo" />
+        </div>
+        <div class="space-y-1 flex-1">
+          <p class="text-sm font-semibold text-zinc-800" id="sidebar-student-name">Uzman</p>
+          <p class="text-xs text-zinc-600" id="sidebar-expert-id">Uzman ID</p>
+          <p class="text-xs text-zinc-600">Workshop Tamamlama: <span id="sidebar-certificate-date">-</span></p>
+        </div>
+        {% endif %}
       </div>
-      <div class="space-y-1">
-        <p class="text-sm font-semibold text-zinc-800" id="sidebar-student-name">Uzman</p>
-        <p class="text-xs text-zinc-600" id="sidebar-expert-id">Uzman ID</p>
-        <p class="text-xs text-zinc-600">Workshop Tamamlama: <span id="sidebar-certificate-date">-</span></p>
-      </div>
-    </div>
     <div class="flex flex-col gap-3">
       <button class="nav-btn" data-target="portal" title="Panel">
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -148,11 +152,16 @@
         <div class="w-12 h-12 rounded-lg bg-white/20 flex items-center justify-center overflow-hidden">
           <img src="../static/img/sb-logo.png" alt="Profil Görseli" class="w-full h-full object-cover" id="profile-logo">
         </div>
-        <div>
+        <div class="flex items-start justify-between gap-3 w-full">
+          <div>
           <p class="text-xs uppercase tracking-[0.2em] text-zinc-100">SHINING BROWS</p>
           <h1 class="text-xl font-semibold" id="student-name">Uzman</h1>
           <p class="text-sm text-zinc-100" id="expert-id">Uzman ID</p>
           <p class="text-xs">Workshop Tamamlama: <span id="certificate-date">-</span></p>
+        </div>
+          {% if clerk_key %}
+          <div id="clerk-header-button" class="flex items-center"></div>
+          {% endif %}
         </div>
       </div>
     </header>
@@ -338,6 +347,18 @@
       </form>
       <p id="profile-success" class="hidden text-sm text-zinc-700">Profil güncellendi.</p>
     </div>
+
+    {% if clerk_key %}
+    <div class="p-4 space-y-3">
+      <div class="flex items-center gap-2">
+        <h3 class="font-semibold">Hesap Yönetimi</h3>
+      </div>
+      <p class="text-sm text-zinc-600">
+        Hesap ayarları, şifre güncelleme, çıkış ve hesap silme için Clerk menüsünü kullanın.
+      </p>
+      <div id="clerk-account" class="flex items-center"></div>
+    </div>
+    {% endif %}
 
     <div id="password-card" class="p-4 space-y-3">
       <div class="flex items-center gap-2">
@@ -794,5 +815,16 @@
   role="status"
   aria-live="polite"
 ></div>
+
+{% if clerk_key %}
+  <script
+    async
+    crossorigin="anonymous"
+    data-clerk-publishable-key="{{ clerk_key }}"
+    src="{{ clerk_issuer or 'https://organic-snapper-75.clerk.accounts.dev' }}/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
+    type="text/javascript"
+  ></script>
+  <script src="/static/js/clerk.tr.js"></script>
+{% endif %}
 
 {% endblock %}
