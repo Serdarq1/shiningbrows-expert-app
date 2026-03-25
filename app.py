@@ -1,7 +1,9 @@
 import io
+import mimetypes
 import os
 import uuid
 import bcrypt
+import base64
 import json
 from datetime import UTC, datetime
 from tempfile import NamedTemporaryFile
@@ -78,6 +80,10 @@ SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "Images")
 SUPABASE_BOOK_BUCKET = os.getenv("SUPABASE_BOOK_BUCKET", "books")
 SUPABASE_VIDEO_BUCKET = os.getenv("SUPABASE_VIDEO_BUCKET", "videos")
 SUPABASE_TRUST_ENV = (os.getenv("SUPABASE_TRUST_ENV", "true").lower() in ("1", "true", "yes"))
+MUX_TOKEN_ID = os.getenv("MUX_TOKEN_ID", "")
+MUX_TOKEN_SECRET = os.getenv("MUX_TOKEN_SECRET", "")
+MUX_API_BASE = "https://api.mux.com"
+MUX_STREAM_BASE = "https://stream.mux.com"
 ALLOWED_REACTIONS = {"like", "love", "wow", "clap"}
 ELEVATED_ROLES = {"master", "admin"}
 ALLOWED_EXPERT_STATUSES = {"shining expert", "master trainer"}
@@ -170,6 +176,157 @@ def build_storage_url(path: str, bucket: str) -> Optional[str]:
 def build_image_url(path: str) -> Optional[str]:
     """Return a browser-friendly URL for a stored image."""
     return build_storage_url(path, SUPABASE_BUCKET)
+
+
+def get_video_extension(content_type: str, source_url: str = "") -> str:
+    """Infer a storage extension from the downloaded video's mime type or URL."""
+    mime = (content_type or "").split(";")[0].strip().lower()
+    explicit_map = {
+        "video/mp4": ".mp4",
+        "video/quicktime": ".mov",
+        "video/x-m4v": ".m4v",
+        "video/webm": ".webm",
+        "video/ogg": ".ogv",
+        "application/ogg": ".ogv",
+    }
+    if mime in explicit_map:
+        return explicit_map[mime]
+    guessed = mimetypes.guess_extension(mime or "")
+    if guessed:
+        return guessed
+    if source_url:
+        try:
+            parsed = urlparse(source_url)
+            _, ext = os.path.splitext(parsed.path)
+            if ext:
+                return ext.lower()
+        except Exception:
+            pass
+    return ".mp4"
+
+
+def is_mux_enabled() -> bool:
+    return bool(MUX_TOKEN_ID and MUX_TOKEN_SECRET)
+
+
+def mux_auth_header() -> str:
+    token = f"{MUX_TOKEN_ID}:{MUX_TOKEN_SECRET}".encode("utf-8")
+    return f"Basic {base64.b64encode(token).decode('ascii')}"
+
+
+def mux_request(method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    if not is_mux_enabled():
+        raise ValueError("Mux yapılandırması eksik.")
+    body = None
+    headers = {
+        "Authorization": mux_auth_header(),
+        "Accept": "application/json",
+    }
+    if payload is not None:
+        body = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = Request(f"{MUX_API_BASE}{path}", data=body, headers=headers, method=method.upper())
+    context = ssl._create_unverified_context() if DISABLE_SSL_VERIFY else None
+    try:
+        with urlopen(req, context=context, timeout=DOWNLOAD_TIMEOUT_SEC) as response:
+            raw = response.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        print("Mux request failed:", method, path, exc.code, detail)
+        raise ValueError("Mux isteği başarısız oldu.") from exc
+    except URLError as exc:
+        raise ValueError("Mux servisine bağlanılamadı.") from exc
+
+
+def encode_mux_reference(asset_id: str, playback_id: str) -> str:
+    return f"mux:{asset_id}:{playback_id}"
+
+
+def parse_mux_reference(value: str) -> Optional[Dict[str, str]]:
+    if not value or not value.startswith("mux:"):
+        return None
+    parts = value.split(":")
+    if len(parts) < 3 or not parts[1] or not parts[2]:
+        return None
+    return {"asset_id": parts[1], "playback_id": parts[2]}
+
+
+def extract_mux_playback_id(value: str) -> Optional[str]:
+    if not value:
+        return None
+    parsed_ref = parse_mux_reference(value)
+    if parsed_ref:
+        return parsed_ref["playback_id"]
+    candidate = value.strip()
+    if candidate.startswith("http://") or candidate.startswith("https://"):
+        try:
+            parsed = urlparse(candidate)
+            if "stream.mux.com" not in (parsed.netloc or ""):
+                return None
+            filename = parsed.path.rsplit("/", 1)[-1]
+            playback_id = filename.split(".", 1)[0]
+            return playback_id or None
+        except Exception:
+            return None
+    if re.fullmatch(r"[A-Za-z0-9_-]{10,}", candidate):
+        return candidate
+    return None
+
+
+def build_mux_playback_url(playback_id: str) -> str:
+    return f"{MUX_STREAM_BASE}/{playback_id}.m3u8"
+
+
+def mux_create_asset(input_url: str, title: str = "") -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "inputs": [{"url": input_url}],
+        "playback_policies": ["public"],
+        "video_quality": "basic",
+    }
+    if title:
+        payload["passthrough"] = title[:255]
+    response = mux_request("POST", "/video/v1/assets", payload)
+    data = response.get("data") or {}
+    playback_ids = data.get("playback_ids") or []
+    playback_id = ""
+    if playback_ids and isinstance(playback_ids[0], dict):
+        playback_id = playback_ids[0].get("id") or ""
+    if not data.get("id") or not playback_id:
+        raise ValueError("Mux video varlığı oluşturulamadı.")
+    return {
+        "asset_id": data["id"],
+        "playback_id": playback_id,
+        "status": data.get("status") or "preparing",
+        "duration": data.get("duration"),
+    }
+
+
+def mux_get_asset(asset_id: str) -> Optional[Dict[str, Any]]:
+    if not asset_id:
+        return None
+    try:
+        response = mux_request("GET", f"/video/v1/assets/{asset_id}")
+    except ValueError as exc:
+        print("Mux asset fetch failed:", exc)
+        return None
+    data = response.get("data") or {}
+    if not data:
+        return None
+    return {
+        "status": data.get("status") or "preparing",
+        "duration": data.get("duration"),
+        "max_stored_resolution": data.get("max_stored_resolution") or data.get("resolution_tier"),
+    }
+
+
+def mux_delete_asset(asset_id: str) -> None:
+    if not asset_id:
+        return
+    try:
+        mux_request("DELETE", f"/video/v1/assets/{asset_id}")
+    except ValueError as exc:
+        print("Mux asset delete failed:", exc)
 
 
 def extract_storage_key(path: str) -> Optional[str]:
@@ -889,11 +1046,30 @@ def api_videos_get() -> Any:
         )
         videos = getattr(response, "data", []) or []
         for video in videos:
-            storage_key = video.get("video_url", "")
-            video["video_path"] = storage_key
-            url = build_storage_url(storage_key, SUPABASE_VIDEO_BUCKET) if storage_key else None
+            stored_value = video.get("video_url", "")
+            video["video_path"] = stored_value
+            mux_ref = parse_mux_reference(stored_value)
+            if mux_ref:
+                asset_state = mux_get_asset(mux_ref["asset_id"])
+                video["video_provider"] = "mux"
+                video["mux_asset_id"] = mux_ref["asset_id"]
+                video["mux_playback_id"] = mux_ref["playback_id"]
+                video["video_url"] = build_mux_playback_url(mux_ref["playback_id"])
+                if asset_state:
+                    video["status"] = asset_state.get("status")
+                    video["duration"] = asset_state.get("duration")
+                    video["resolution"] = asset_state.get("max_stored_resolution")
+                continue
+            mux_playback_id = extract_mux_playback_id(stored_value)
+            if mux_playback_id:
+                video["video_provider"] = "mux"
+                video["mux_playback_id"] = mux_playback_id
+                video["video_url"] = build_mux_playback_url(mux_playback_id)
+                continue
+            url = build_storage_url(stored_value, SUPABASE_VIDEO_BUCKET) if stored_value else None
             if url:
                 video["video_url"] = url
+            video["video_provider"] = "legacy"
         return jsonify(videos)
     except Exception as exc:
         print("Videos fetch failed:", exc)
@@ -909,51 +1085,28 @@ def api_videos_import() -> Any:
         return jsonify({"error": "Yetkisiz işlem"}), 403
     if not supabase:
         return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+    if not is_mux_enabled():
+        return jsonify({"error": "Mux yapılandırması eksik."}), 500
 
     payload = request.get_json() or {}
     url = (payload.get("url") or "").strip()
     title = (payload.get("title") or "Video").strip()
     if not url:
         return jsonify({"error": "Video linki gerekli."}), 400
-
-    file_id = extract_drive_file_id(url)
-
-    temp_path = None
     try:
-        if file_id:
-            downloaded = download_drive_file(file_id)
-        else:
-            downloaded = download_public_file(url)
-        if not downloaded:
-            return jsonify({"error": "Dosya indirilemedi."}), 400
-        temp_path = downloaded["path"]
-        content_type = downloaded["content_type"]
-        if not content_type.startswith("video/"):
-            content_type = "video/mp4"
-        extension = ".mp4"
-        storage_key = f"videos/{uuid.uuid4().hex}{extension}"
-        with open(temp_path, "rb") as handle:
-            supabase.storage.from_(SUPABASE_VIDEO_BUCKET).upload(
-                path=storage_key,
-                file=handle,
-                file_options={"content-type": content_type, "upsert": "false"},
-            )
-        video_url = supabase.storage.from_(SUPABASE_VIDEO_BUCKET).get_public_url(storage_key)
+        asset = mux_create_asset(url, title)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except Exception as exc:
-        print("Video import failed:", exc)
-        return jsonify({"error": "Video yüklenemedi."}), 500
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except OSError:
-                pass
+        print("Mux asset creation failed:", exc)
+        return jsonify({"error": "Video Mux'a gönderilemedi."}), 500
+
+    mux_reference = encode_mux_reference(asset["asset_id"], asset["playback_id"])
+    video_url = build_mux_playback_url(asset["playback_id"])
 
     record = {
         "title": title,
-        "video_url": storage_key,
+        "video_url": mux_reference,
         "student_id": student["id"],
         "created_at": datetime.now(UTC).isoformat(),
     }
@@ -965,7 +1118,12 @@ def api_videos_import() -> Any:
     except Exception as exc:
         print("Video DB insert failed:", exc)
     record["video_url"] = video_url
-    record["video_path"] = storage_key
+    record["video_path"] = mux_reference
+    record["video_provider"] = "mux"
+    record["mux_asset_id"] = asset["asset_id"]
+    record["mux_playback_id"] = asset["playback_id"]
+    record["status"] = asset.get("status")
+    record["duration"] = asset.get("duration")
     return jsonify(record), 201
 
 
@@ -995,11 +1153,29 @@ def api_videos_update_delete(video_id: int) -> Any:
             if not updated:
                 return jsonify({"error": "Video bulunamadı."}), 404
             video = updated[0]
-            storage_key = video.get("video_url", "")
-            video["video_path"] = storage_key
-            url = build_storage_url(storage_key, SUPABASE_VIDEO_BUCKET) if storage_key else None
-            if url:
-                video["video_url"] = url
+            stored_value = video.get("video_url", "")
+            video["video_path"] = stored_value
+            mux_ref = parse_mux_reference(stored_value)
+            if mux_ref:
+                video["video_provider"] = "mux"
+                video["mux_asset_id"] = mux_ref["asset_id"]
+                video["mux_playback_id"] = mux_ref["playback_id"]
+                video["video_url"] = build_mux_playback_url(mux_ref["playback_id"])
+                asset_state = mux_get_asset(mux_ref["asset_id"])
+                if asset_state:
+                    video["status"] = asset_state.get("status")
+                    video["duration"] = asset_state.get("duration")
+            else:
+                mux_playback_id = extract_mux_playback_id(stored_value)
+                if mux_playback_id:
+                    video["video_provider"] = "mux"
+                    video["mux_playback_id"] = mux_playback_id
+                    video["video_url"] = build_mux_playback_url(mux_playback_id)
+                else:
+                    url = build_storage_url(stored_value, SUPABASE_VIDEO_BUCKET) if stored_value else None
+                    if url:
+                        video["video_url"] = url
+                    video["video_provider"] = "legacy"
             return jsonify(video)
         except Exception as exc:
             print("Video update failed:", exc)
@@ -1015,12 +1191,17 @@ def api_videos_update_delete(video_id: int) -> Any:
         print("Video lookup failed:", exc)
         return jsonify({"error": "Video bulunamadı."}), 404
 
-    storage_key = extract_storage_key_for_bucket(video.get("video_url", ""), SUPABASE_VIDEO_BUCKET)
-    if storage_key:
-        try:
-            supabase.storage.from_(SUPABASE_VIDEO_BUCKET).remove([storage_key])
-        except Exception as exc:
-            print("Video storage delete failed:", exc)
+    stored_value = video.get("video_url", "")
+    mux_ref = parse_mux_reference(stored_value)
+    if mux_ref:
+        mux_delete_asset(mux_ref["asset_id"])
+    else:
+        storage_key = extract_storage_key_for_bucket(stored_value, SUPABASE_VIDEO_BUCKET)
+        if storage_key:
+            try:
+                supabase.storage.from_(SUPABASE_VIDEO_BUCKET).remove([storage_key])
+            except Exception as exc:
+                print("Video storage delete failed:", exc)
 
     try:
         supabase.table("videos").delete().eq("id", video_id).execute()

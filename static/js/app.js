@@ -378,6 +378,15 @@ function showToast(message, { type = "info", duration = 2200 } = {}) {
   toast.dataset.timerId = String(timerId);
 }
 
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function isElevatedRole() {
   return currentUserRole === "admin" || currentUserRole === "master";
 }
@@ -1336,6 +1345,25 @@ async function loadVideos() {
       const card = document.createElement("div");
       const title = video.title || "Video";
       const date = video.created_at ? new Date(video.created_at).toLocaleDateString("tr-TR") : "";
+      const status = video.status || "";
+      const isMux = video.video_provider === "mux";
+      const isReady = !isMux || !status || status === "ready";
+      const playbackMarkup = isMux
+        ? isReady
+          ? `<mux-player
+              playback-id="${escapeHTML(video.mux_playback_id || "")}"
+              stream-type="on-demand"
+              preload="metadata"
+              accent-color="#caa24a"
+              class="block w-full h-full"
+            ></mux-player>`
+          : `<div class="flex h-full w-full items-center justify-center p-4 text-center text-sm text-zinc-200">
+              Video isleniyor. Mux hazir oldugunda burada oynatilacak.
+            </div>`
+        : `<video controls preload="metadata" playsinline webkit-playsinline class="w-full h-full object-cover" src="${escapeHTML(video.video_url || "")}"></video>`;
+      const meta = [];
+      if (status) meta.push(`Durum: ${status}`);
+      if (video.resolution) meta.push(`Kalite: ${video.resolution}`);
       card.className = "rounded-lg border border-gray-200 bg-white p-4 space-y-3";
       const actions = isElevatedRole()
         ? `
@@ -1351,10 +1379,9 @@ async function loadVideos() {
           <span class="text-xs text-zinc-500">${date}</span>
         </div>
         <div class="w-full aspect-video rounded-lg overflow-hidden bg-black">
-          <video controls class="w-full h-full object-cover">
-            <source src="${video.video_url}" type="video/mp4">
-          </video>
+          ${playbackMarkup}
         </div>
+        ${meta.length ? `<p class="text-xs text-zinc-500">${escapeHTML(meta.join(" · "))}</p>` : ""}
         ${actions}
       `;
       if (isElevatedRole()) {
@@ -1455,7 +1482,7 @@ function resetVideoForm() {
   const urlInput = form.querySelector('input[name="video_url"]');
   if (urlInput) {
     urlInput.disabled = false;
-    urlInput.placeholder = "Google Drive paylaşım linki";
+    urlInput.placeholder = "Supabase public video linki";
   }
   if (cancelBtn) cancelBtn.classList.add("hidden");
 }

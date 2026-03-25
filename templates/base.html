@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -61,6 +61,25 @@
 
     html, body {
       background-color: #ffffff;
+      width: 100%;
+      min-height: 100%;
+      overflow-x: hidden;
+      overscroll-behavior: none;
+      -webkit-overflow-scrolling: touch;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+      overscroll-behavior-y: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    a,
+    button,
+    [role="button"],
+    input[type="button"],
+    input[type="submit"] {
+      touch-action: manipulation;
     }
 
     @media (max-width: 768px) {
@@ -126,6 +145,76 @@
     {% block content %}{% endblock %}
   </div>
   <script>
+    (() => {
+      let lastTouchEnd = 0;
+      let lastActivation = 0;
+      let lastActivationKey = "";
+
+      const getActionableTarget = (target) => {
+        if (!(target instanceof Element)) return null;
+        return target.closest("a, button, [role='button'], input[type='button'], input[type='submit'], label[for], summary");
+      };
+
+      document.addEventListener("gesturestart", (event) => {
+        event.preventDefault();
+      });
+
+      document.addEventListener(
+        "touchmove",
+        (event) => {
+          if (event.touches.length > 1) {
+            event.preventDefault();
+          }
+        },
+        { passive: false }
+      );
+
+      document.addEventListener(
+        "touchend",
+        (event) => {
+          const now = Date.now();
+          if (now - lastTouchEnd < 300) {
+            event.preventDefault();
+          }
+          lastTouchEnd = now;
+        },
+        { passive: false }
+      );
+
+      document.addEventListener("dblclick", (event) => {
+        event.preventDefault();
+      });
+
+      document.addEventListener(
+        "click",
+        (event) => {
+          const target = getActionableTarget(event.target);
+          if (!target) return;
+
+          const now = Date.now();
+          const activationKey = [
+            target.tagName,
+            target.id,
+            target.getAttribute("href") || "",
+            target.getAttribute("data-target") || "",
+            target.getAttribute("type") || "",
+            target.textContent ? target.textContent.trim().slice(0, 80) : "",
+          ].join("|");
+
+          if (activationKey === lastActivationKey && now - lastActivation < 350) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+            return;
+          }
+
+          lastActivation = now;
+          lastActivationKey = activationKey;
+        },
+        true
+      );
+    })();
+
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("/service-worker.js").catch((err) => {
