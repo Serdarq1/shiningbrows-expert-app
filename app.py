@@ -1345,8 +1345,9 @@ def api_photos_post() -> Any:
 
 @app.route("/api/photos/feed", methods=["GET"])
 def api_photos_feed() -> Any:
+    is_guest = bool(session.get("guest"))
     student = get_current_student()
-    if not student:
+    if not student and not is_guest:
         return jsonify({"error": "Oturum bulunamadı"}), 401
 
     if not supabase:
@@ -1368,6 +1369,7 @@ def api_photos_feed() -> Any:
     reaction_counts: Dict[int, Dict[str, int]] = {}
     my_reactions: Dict[int, str] = {}
     feedback_map: Dict[int, List[Dict[str, Any]]] = {}
+    guest_reactions = session.get("guest_photo_reactions") or {}
     if photo_ids:
         try:
             reaction_response = (
@@ -1384,7 +1386,7 @@ def api_photos_feed() -> Any:
                     continue
                 reaction_counts.setdefault(pid, {}).setdefault(kind, 0)
                 reaction_counts[pid][kind] += 1
-                if row.get("student_id") == student["id"]:
+                if student and row.get("student_id") == student["id"]:
                     my_reactions[pid] = kind
         except Exception as exc:
             print("Reaction fetch failed:", exc)
@@ -1404,6 +1406,18 @@ def api_photos_feed() -> Any:
                 feedback_map.setdefault(pid, []).append(row)
         except Exception as exc:
             print("Feedback fetch failed:", exc)
+
+    if is_guest and isinstance(guest_reactions, dict):
+        for raw_photo_id, reaction in guest_reactions.items():
+            try:
+                pid = int(raw_photo_id)
+            except (TypeError, ValueError):
+                continue
+            if reaction not in ALLOWED_REACTIONS:
+                continue
+            reaction_counts.setdefault(pid, {}).setdefault(reaction, 0)
+            reaction_counts[pid][reaction] += 1
+            my_reactions[pid] = reaction
 
     try:
         student_ids = {item.get("student_id") for item in photos if item.get("student_id")}
@@ -1455,8 +1469,9 @@ def api_photos_feed() -> Any:
 
 @app.route("/api/photos/reaction", methods=["POST"])
 def api_photos_reaction() -> Any:
+    is_guest = bool(session.get("guest"))
     student = get_current_student()
-    if not student:
+    if not student and not is_guest:
         return jsonify({"error": "Oturum bulunamadı"}), 401
     if not supabase:
         return jsonify({"error": "Supabase yapılandırması eksik."}), 500
@@ -1467,6 +1482,13 @@ def api_photos_reaction() -> Any:
 
     if not photo_id or reaction not in ALLOWED_REACTIONS:
         return jsonify({"error": "Geçersiz istek."}), 400
+
+    if is_guest:
+        guest_reactions = session.get("guest_photo_reactions") or {}
+        guest_reactions[str(photo_id)] = reaction
+        session["guest_photo_reactions"] = guest_reactions
+        session.modified = True
+        return jsonify({"ok": True, "guest": True})
 
     try:
         existing = (
@@ -1540,7 +1562,9 @@ def api_photos_feedback() -> Any:
     student = get_current_student()
     if not student:
         return jsonify({"error": "Oturum bulunamadı"}), 401
-    if student.get("role") not in ELEVATED_ROLES:
+    if student.get("role") == "guest":
+        return jsonify({"error": "Misafir hesaplar yorum bırakamaz."}), 403
+    if student.get("role") not in {"student", *ELEVATED_ROLES}:
         return jsonify({"error": "Yetkisiz işlem"}), 403
     if not supabase:
         return jsonify({"error": "Supabase yapılandırması eksik."}), 500

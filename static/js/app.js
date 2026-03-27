@@ -34,6 +34,7 @@ let orderHistoryPage = 1;
 let orderHistoryHasMore = false;
 const CART_STORAGE_KEY = "sb_order_cart_v1";
 let pendingOpenCart = false;
+let activeDeletePopover = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   const searchParams = new URLSearchParams(window.location.search);
@@ -132,7 +133,7 @@ function setupNotificationButton() {
 
 function applyRoleVisibility(role) {
   const allowed = role === "guest"
-    ? new Set(["portal", "urun-bilgileri", "yaklasan-workshoplar", "shining-world"])
+    ? new Set(["portal", "urun-bilgileri", "yaklasan-workshoplar", "uzman-akisi", "uzmanlar", "shining-world"])
     : null;
   if (!allowed) return;
   document.querySelectorAll(".nav-btn").forEach((btn) => {
@@ -378,6 +379,100 @@ function showToast(message, { type = "info", duration = 2200 } = {}) {
   toast.dataset.timerId = String(timerId);
 }
 
+function closeDeletePopover() {
+  if (!activeDeletePopover) return;
+  const { popover, overlay } = activeDeletePopover;
+  if (overlay) overlay.remove();
+  popover.remove();
+  activeDeletePopover = null;
+}
+
+function attachDeletePopover(button, { message, onConfirm, onError, confirmLabel = "Sil", position = "inline" } = {}) {
+  if (!button || typeof onConfirm !== "function") return;
+  const host = button.parentElement || button;
+  if (position === "inline") {
+    host.classList.add("relative");
+  }
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (activeDeletePopover?.button === button) {
+      closeDeletePopover();
+      return;
+    }
+    closeDeletePopover();
+    const popover = document.createElement("div");
+    const isCentered = position === "center";
+    let overlay = null;
+    if (isCentered) {
+      overlay = document.createElement("div");
+      overlay.className = "fixed inset-0 z-40 bg-black/30 backdrop-blur-[1px]";
+      document.body.appendChild(overlay);
+      popover.className = "fixed left-1/2 top-1/2 z-50 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-gray-200 bg-white p-4 shadow-2xl";
+    } else {
+      popover.className = "absolute right-0 top-full z-30 mt-2 w-60 rounded-xl border border-gray-200 bg-white p-3 shadow-xl";
+    }
+    popover.innerHTML = `
+      <p class="text-xs leading-5 text-zinc-700">${escapeHTML(message || "Bu kayit silinsin mi?")}</p>
+      <div class="mt-3 flex items-center justify-end gap-2">
+        <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-zinc-600" data-delete-cancel>Vazgeç</button>
+        <button type="button" class="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600" data-delete-confirm>${escapeHTML(confirmLabel)}</button>
+      </div>
+    `;
+    if (isCentered) {
+      document.body.appendChild(popover);
+    } else {
+      host.appendChild(popover);
+    }
+    activeDeletePopover = { button, popover, overlay };
+
+    const cancelBtn = popover.querySelector("[data-delete-cancel]");
+    const confirmBtn = popover.querySelector("[data-delete-confirm]");
+
+    cancelBtn?.addEventListener("click", (cancelEvent) => {
+      cancelEvent.preventDefault();
+      cancelEvent.stopPropagation();
+      closeDeletePopover();
+    });
+
+    confirmBtn?.addEventListener("click", async (confirmEvent) => {
+      confirmEvent.preventDefault();
+      confirmEvent.stopPropagation();
+      if (confirmBtn.disabled) return;
+      confirmBtn.disabled = true;
+      cancelBtn.disabled = true;
+      button.disabled = true;
+      confirmBtn.textContent = "Siliniyor...";
+      try {
+        await onConfirm();
+        button.disabled = false;
+        closeDeletePopover();
+      } catch (err) {
+        if (typeof onError === "function") {
+          onError(err);
+        }
+        confirmBtn.disabled = false;
+        cancelBtn.disabled = false;
+        button.disabled = false;
+        confirmBtn.textContent = confirmLabel;
+      }
+    });
+  });
+}
+
+document.addEventListener("click", (event) => {
+  if (!activeDeletePopover) return;
+  const { button, popover } = activeDeletePopover;
+  if (popover.contains(event.target) || button.contains(event.target)) return;
+  closeDeletePopover();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeDeletePopover();
+  }
+});
+
 function escapeHTML(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -504,12 +599,21 @@ async function loadStudent() {
     if (statusText) {
       statusText.textContent = formatExpertStatus(student.expert_status);
     }
+    const openPhotosBtn = document.getElementById("open-photos");
+    if (openPhotosBtn) {
+      openPhotosBtn.classList.toggle("hidden", isGuestUser);
+    }
+    const photoForm = document.getElementById("photo-form");
+    if (photoForm) {
+      photoForm.classList.toggle("hidden", isGuestUser);
+    }
+    if (isGuestUser) {
+      setFeedView("main");
+    }
     refreshPasswordUI();
     refreshWorkshopAdminVisibility();
     applyRoleVisibility(currentUserRole);
-    if (!isGuestUser) {
-      loadFeed();
-    }
+    loadFeed();
   } catch (err) {
     console.error(err);
     if (!isGuestUser) {
@@ -594,7 +698,6 @@ async function loadProducts() {
   const products = await fetchJSON("/api/products");
   products.forEach((product) => {
     const steps = toBulletItems(product.steps);
-    const priceText = formatPrice(product.price);
     const card = document.createElement("div");
     card.className = "rounded-lg bg-gray-50 p-2 space-y-2";
     card.innerHTML = `
@@ -604,7 +707,6 @@ async function loadProducts() {
         </button>
         <div class="flex items-center justify-between">
           <h4 class="font-semibold">${product.name}</h4>
-          ${priceText ? `<span class="text-xs font-semibold">${priceText}</span>` : ""}
         </div>
         <div class="product-details hidden">
           <div class="flex items-center justify-between">
@@ -1173,15 +1275,16 @@ async function loadCampaigns() {
         editBtn.addEventListener("click", () => setCampaignFormEditing(c));
       }
       if (deleteBtn) {
-        deleteBtn.addEventListener("click", async () => {
-          if (!confirm("Kampanya silinsin mi?")) return;
-          try {
+        attachDeletePopover(deleteBtn, {
+          message: "Kampanya silinsin mi?",
+          onConfirm: async () => {
             await fetchJSON(`/api/campaigns/${c.id}`, { method: "DELETE" });
             showToast("Kampanya silindi.", { type: "success" });
-            loadCampaigns();
-          } catch (err) {
+            await loadCampaigns();
+          },
+          onError: () => {
             showToast("Kampanya silinemedi.", { type: "error" });
-          }
+          },
         });
       }
       adminList.appendChild(row);
@@ -1251,15 +1354,16 @@ async function loadWorkshop() {
           editBtn.addEventListener("click", () => setWorkshopFormEditing(workshop));
         }
         if (deleteBtn) {
-          deleteBtn.addEventListener("click", async () => {
-            if (!confirm("Workshop silinsin mi?")) return;
-            try {
+          attachDeletePopover(deleteBtn, {
+            message: "Workshop silinsin mi?",
+            onConfirm: async () => {
               await fetchJSON(`/api/workshops/${workshop.id}`, { method: "DELETE" });
               showToast("Workshop silindi.", { type: "success" });
-              loadWorkshop();
-            } catch (err) {
+              await loadWorkshop();
+            },
+            onError: () => {
               showToast("Workshop silinemedi.", { type: "error" });
-            }
+            },
           });
         }
         adminList.appendChild(row);
@@ -1368,7 +1472,6 @@ async function loadVideos() {
       const actions = isElevatedRole()
         ? `
           <div class="flex items-center justify-end gap-2">
-            <button type="button" class="px-3 py-1 rounded-lg border border-gray-200 text-xs font-semibold text-zinc-600" data-action="edit">Düzenle</button>
             <button type="button" class="px-3 py-1 rounded-lg border border-red-200 text-xs font-semibold text-red-600" data-action="delete">Sil</button>
           </div>
         `
@@ -1391,15 +1494,17 @@ async function loadVideos() {
           editBtn.addEventListener("click", () => setVideoFormEditing(video));
         }
         if (deleteBtn) {
-          deleteBtn.addEventListener("click", async () => {
-            if (!confirm("Video silinsin mi?")) return;
-            try {
+          attachDeletePopover(deleteBtn, {
+            message: "Video silinsin mi?",
+            position: "center",
+            onConfirm: async () => {
               await fetchJSON(`/api/videos/${video.id}`, { method: "DELETE" });
               showToast("Video silindi.", { type: "success" });
-              loadVideos();
-            } catch (err) {
+              await loadVideos();
+            },
+            onError: () => {
               showToast("Video silinemedi.", { type: "error" });
-            }
+            },
           });
         }
       }
@@ -1413,11 +1518,11 @@ async function loadVideos() {
 async function loadExperts() {
   const table = document.getElementById("experts-table");
   if (!table) return;
-  table.innerHTML = '<tr><td class="py-3 text-sm text-zinc-500" colspan="4">Yükleniyor...</td></tr>';
+  table.innerHTML = '<tr><td class="py-3 text-sm text-zinc-500" colspan="5">Yükleniyor...</td></tr>';
   try {
     const experts = await fetchJSON("/api/experts");
     if (!experts.length) {
-      table.innerHTML = '<tr><td class="py-3 text-sm text-zinc-500" colspan="4">Henüz uzman yok.</td></tr>';
+      table.innerHTML = '<tr><td class="py-3 text-sm text-zinc-500" colspan="5">Henüz uzman yok.</td></tr>';
       return;
     }
     table.innerHTML = "";
@@ -1427,6 +1532,7 @@ async function loadExperts() {
       const avatarUrl = expert.avatar_url || "../static/img/user-logo.png";
       const statusLabel = formatExpertStatus(expert.expert_status);
       const phoneLabel = expert.phone || "-";
+      const cityLabel = expert.city || "-";
       row.innerHTML = `
         <td class="py-2 pr-4">
           <div class="w-9 h-9 rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
@@ -1436,11 +1542,12 @@ async function loadExperts() {
         <td class="py-2 pr-4 font-semibold">${toTitleCase(expert.name) || "-"}</td>
         <td class="py-2 pr-4">${statusLabel}</td>
         <td class="py-2 pr-4">${phoneLabel}</td>
+        <td class="py-2 pr-4">${cityLabel}</td>
       `;
       table.appendChild(row);
     });
   } catch (err) {
-    table.innerHTML = '<tr><td class="py-3 text-sm text-red-500" colspan="4">Uzmanlar yüklenemedi.</td></tr>';
+    table.innerHTML = '<tr><td class="py-3 text-sm text-red-500" colspan="5">Uzmanlar yüklenemedi.</td></tr>';
   }
 }
 
@@ -2003,10 +2110,9 @@ async function loadPhotos() {
       `;
       const deleteBtn = card.querySelector("[data-photo-delete]");
       if (deleteBtn) {
-        deleteBtn.addEventListener("click", async () => {
-          if (!confirm("Fotoğraf silinsin mi?")) return;
-          deleteBtn.disabled = true;
-          try {
+        attachDeletePopover(deleteBtn, {
+          message: "Fotoğraf silinsin mi?",
+          onConfirm: async () => {
             await fetchJSON(`/api/photos/${photo.id}`, { method: "DELETE" });
             card.remove();
             if (!gallery.querySelector("div")) {
@@ -2015,11 +2121,10 @@ async function loadPhotos() {
             showToast("Fotoğraf silindi.", { type: "success" });
             await loadPhotos();
             await loadFeed();
-          } catch (err) {
+          },
+          onError: () => {
             showToast("Fotoğraf silinemedi.", { type: "error" });
-          } finally {
-            deleteBtn.disabled = false;
-          }
+          },
         });
       }
       gallery.appendChild(card);
@@ -2033,7 +2138,6 @@ async function loadPhotos() {
 async function loadFeed() {
   const feed = document.getElementById("feed-gallery");
   if (feed) feed.innerHTML = spinner({ size: 40 });
-  if (isGuestUser) return;
   try {
     feedPhotos = await fetchJSON("/api/photos/feed");
     renderFeed();
@@ -2160,7 +2264,7 @@ function renderFeed() {
         feedbackList.appendChild(row);
       });
     }
-    if (currentUserRole === "master" || currentUserRole === "admin") {
+    if (!isGuestUser) {
       const feedbackWrapper = document.createElement("div");
       feedbackWrapper.className = "space-y-2";
       const feedbackInputId = `feedback-${photo.id}`;
