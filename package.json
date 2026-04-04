@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "@clerk/clerk-js": "^5.122.0",
-    "@clerk/localizations": "^3.35.3"
+    "@clerk/localizations": "^3.35.3",
+    "@mux/mux-node": "^12.8.1"
   }
 }

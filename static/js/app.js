@@ -35,6 +35,7 @@ let orderHistoryHasMore = false;
 const CART_STORAGE_KEY = "sb_order_cart_v1";
 let pendingOpenCart = false;
 let activeDeletePopover = null;
+let pendingWorkshopLive = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   const searchParams = new URLSearchParams(window.location.search);
@@ -74,6 +75,8 @@ document.addEventListener("DOMContentLoaded", () => {
   setupOrderActions();
   loadOrderHistory();
   setupWorkshopSignup();
+  setupWorkshopLiveDialog();
+  setupWorkshopShareDialog();
 });
 
 function saveCart() {
@@ -633,6 +636,7 @@ async function loadStudent() {
     refreshPasswordUI();
     refreshWorkshopAdminVisibility();
     applyRoleVisibility(currentUserRole);
+    loadWorkshop();
     loadExperts();
     loadFeed();
   } catch (err) {
@@ -1083,6 +1087,64 @@ function closeWorkshopSignup() {
   panel.classList.remove("opacity-100");
 }
 
+function openWorkshopLiveDialog(workshop) {
+  const overlay = document.getElementById("workshop-live-overlay");
+  const panel = document.getElementById("workshop-live-panel");
+  const input = document.getElementById("workshop-live-password");
+  const eyeOpen = document.getElementById("workshop-live-eye-open");
+  const eyeClosed = document.getElementById("workshop-live-eye-closed");
+  const toggleBtn = document.getElementById("workshop-live-password-toggle");
+  pendingWorkshopLive = workshop || null;
+  if (!overlay || !panel) return;
+  if (input) {
+    input.value = "";
+    input.type = "password";
+  }
+  if (eyeOpen) eyeOpen.classList.remove("hidden");
+  if (eyeClosed) eyeClosed.classList.add("hidden");
+  if (toggleBtn) toggleBtn.setAttribute("aria-label", "Şifreyi göster");
+  overlay.classList.remove("pointer-events-none", "opacity-0");
+  overlay.classList.add("opacity-100");
+  panel.classList.remove("pointer-events-none", "opacity-0");
+  panel.classList.add("opacity-100");
+  if (input) setTimeout(() => input.focus(), 50);
+}
+
+function closeWorkshopLiveDialog() {
+  const overlay = document.getElementById("workshop-live-overlay");
+  const panel = document.getElementById("workshop-live-panel");
+  if (!overlay || !panel) return;
+  overlay.classList.add("pointer-events-none", "opacity-0");
+  overlay.classList.remove("opacity-100");
+  panel.classList.add("pointer-events-none", "opacity-0");
+  panel.classList.remove("opacity-100");
+  pendingWorkshopLive = null;
+}
+
+function openWorkshopShareDialog(studentText, streamKey) {
+  const overlay = document.getElementById("workshop-share-overlay");
+  const panel = document.getElementById("workshop-share-panel");
+  const studentField = document.getElementById("workshop-share-student-text");
+  const streamKeyField = document.getElementById("workshop-share-stream-key");
+  if (!overlay || !panel) return;
+  if (studentField) studentField.value = studentText || "";
+  if (streamKeyField) streamKeyField.value = streamKey || "-";
+  overlay.classList.remove("pointer-events-none", "opacity-0");
+  overlay.classList.add("opacity-100");
+  panel.classList.remove("pointer-events-none", "opacity-0");
+  panel.classList.add("opacity-100");
+}
+
+function closeWorkshopShareDialog() {
+  const overlay = document.getElementById("workshop-share-overlay");
+  const panel = document.getElementById("workshop-share-panel");
+  if (!overlay || !panel) return;
+  overlay.classList.add("pointer-events-none", "opacity-0");
+  overlay.classList.remove("opacity-100");
+  panel.classList.add("pointer-events-none", "opacity-0");
+  panel.classList.remove("opacity-100");
+}
+
 function setupWorkshopSignup() {
   const form = document.getElementById("workshop-signup-form");
   const closeBtn = document.getElementById("workshop-signup-close");
@@ -1115,6 +1177,51 @@ function setupWorkshopSignup() {
       showToast(message, { type: "error" });
     }
   });
+}
+
+function setupWorkshopLiveDialog() {
+  const form = document.getElementById("workshop-live-form");
+  const closeBtn = document.getElementById("workshop-live-close");
+  const cancelBtn = document.getElementById("workshop-live-cancel");
+  const overlay = document.getElementById("workshop-live-overlay");
+  const input = document.getElementById("workshop-live-password");
+  const toggleBtn = document.getElementById("workshop-live-password-toggle");
+  const eyeOpen = document.getElementById("workshop-live-eye-open");
+  const eyeClosed = document.getElementById("workshop-live-eye-closed");
+  if (closeBtn) closeBtn.addEventListener("click", closeWorkshopLiveDialog);
+  if (cancelBtn) cancelBtn.addEventListener("click", closeWorkshopLiveDialog);
+  if (overlay) overlay.addEventListener("click", closeWorkshopLiveDialog);
+  if (toggleBtn && input) {
+    toggleBtn.addEventListener("click", () => {
+      const isHidden = input.type === "password";
+      input.type = isHidden ? "text" : "password";
+      if (eyeOpen) eyeOpen.classList.toggle("hidden", isHidden);
+      if (eyeClosed) eyeClosed.classList.toggle("hidden", !isHidden);
+      toggleBtn.setAttribute("aria-label", isHidden ? "Şifreyi gizle" : "Şifreyi göster");
+    });
+  }
+  if (!form || !input) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const workshop = pendingWorkshopLive;
+    const password = input.value.trim();
+    if (!workshop || !password) return;
+    if (password.length < 4) {
+      showToast("Şifre en az 4 karakter olmalıdır.", { type: "error" });
+      return;
+    }
+    closeWorkshopLiveDialog();
+    await createWorkshopLiveAccess(workshop, password);
+  });
+}
+
+function setupWorkshopShareDialog() {
+  const closeBtn = document.getElementById("workshop-share-close");
+  const okBtn = document.getElementById("workshop-share-ok");
+  const overlay = document.getElementById("workshop-share-overlay");
+  if (closeBtn) closeBtn.addEventListener("click", closeWorkshopShareDialog);
+  if (okBtn) okBtn.addEventListener("click", closeWorkshopShareDialog);
+  if (overlay) overlay.addEventListener("click", closeWorkshopShareDialog);
 }
 
 async function loadRules() {
@@ -1365,12 +1472,17 @@ async function loadWorkshop() {
             <p class="text-xs text-zinc-500">${dateLocation || "-"}</p>
           </div>
           <div class="flex items-center gap-2">
+            <button type="button" class="px-3 py-1 rounded-lg bg-zinc-900 text-xs font-semibold text-white" data-action="live">Yayın Oluştur</button>
             <button type="button" class="px-3 py-1 rounded-lg border border-gray-200 text-xs font-semibold text-zinc-600" data-action="edit">Düzenle</button>
             <button type="button" class="px-3 py-1 rounded-lg border border-red-200 text-xs font-semibold text-red-600" data-action="delete">Sil</button>
           </div>
         `;
+        const liveBtn = row.querySelector('[data-action="live"]');
         const editBtn = row.querySelector('[data-action="edit"]');
         const deleteBtn = row.querySelector('[data-action="delete"]');
+        if (liveBtn) {
+          liveBtn.addEventListener("click", () => openWorkshopLiveDialog(workshop));
+        }
         if (editBtn) {
           editBtn.addEventListener("click", () => setWorkshopFormEditing(workshop));
         }
@@ -1390,6 +1502,44 @@ async function loadWorkshop() {
         adminList.appendChild(row);
       }
     });
+}
+
+async function createWorkshopLiveAccess(workshop, rawPassword) {
+  const workshopId = workshop?.id;
+  if (!workshopId) return;
+  const password = String(rawPassword || "").trim();
+  if (!password) return;
+  if (password.length < 4) {
+    showToast("Şifre en az 4 karakter olmalıdır.", { type: "error" });
+    return;
+  }
+
+  try {
+    showToast("Canlı yayın hazırlanıyor...", { type: "info" });
+    await fetchJSON(`/api/workshops/${workshopId}/live-sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: workshop.title || "Workshop" }),
+    });
+    const share = await fetchJSON(`/api/workshops/${workshopId}/share-access`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    const broadcast = await fetchJSON(`/api/workshops/${workshopId}/broadcast`);
+    const studentShareText = `Workshop linki: ${share.join_url}\nŞifre: ${password}`;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(studentShareText);
+      }
+    } catch (err) {
+      console.warn("Clipboard copy failed", err);
+    }
+    openWorkshopShareDialog(studentShareText, broadcast.stream_key || "-");
+    showToast("Yayın bağlantısı hazırlandı.", { type: "success" });
+  } catch (err) {
+    showToast(err.message || "Yayın hazırlanamadı.", { type: "error" });
+  }
 }
 
 async function loadFaqs() {

@@ -474,6 +474,63 @@
     </div>
   </div>
 
+  <div id="workshop-live-overlay" class="fixed inset-0 bg-black/30 opacity-0 pointer-events-none transition-opacity duration-200 z-30"></div>
+  <div id="workshop-live-panel" class="fixed inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200 z-40">
+    <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-100 p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="font-semibold">Canlı Yayın Şifresi</h3>
+        <button id="workshop-live-close" type="button" class="h-9 w-9 rounded-full border border-gray-200 bg-white text-zinc-700 hover:border-gray-300 flex items-center justify-center leading-none" aria-label="Kapat">
+          ×
+        </button>
+      </div>
+      <p class="text-sm text-zinc-600">Öğrencilere göndereceğiniz yayın şifresini girin.</p>
+      <form id="workshop-live-form" class="space-y-3">
+        <div class="relative">
+          <input id="workshop-live-password" name="workshop_live_password" type="password" minlength="4" placeholder="Yayın şifresi"
+                 class="w-full rounded-lg bg-white border border-gray-200 px-3 py-2 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400" required>
+          <button id="workshop-live-password-toggle" type="button" class="absolute inset-y-0 right-2 flex items-center justify-center px-2 text-zinc-500 hover:text-zinc-800" aria-label="Şifreyi göster">
+            <svg id="workshop-live-eye-open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            <svg id="workshop-live-eye-closed" class="hidden h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m3 3 18 18"></path>
+              <path d="M10.6 10.6a2 2 0 1 0 2.8 2.8"></path>
+              <path d="M9.4 5.1A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a17.2 17.2 0 0 1-4 4.9"></path>
+              <path d="M6.6 6.7C4 8.3 2 12 2 12s3.5 7 10 7a10.7 10.7 0 0 0 4-.8"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="flex gap-3">
+          <button id="workshop-live-cancel" type="button" class="flex-1 py-2 rounded-lg border border-gray-200 text-sm font-semibold text-zinc-600">İptal</button>
+          <button type="submit" class="flex-1 py-2 rounded-lg bg-zinc-900 text-white text-sm font-semibold">Devam Et</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="workshop-share-overlay" class="fixed inset-0 bg-black/30 opacity-0 pointer-events-none transition-opacity duration-200 z-30"></div>
+  <div id="workshop-share-panel" class="fixed inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200 z-40">
+    <div class="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-gray-100 p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="font-semibold">Yayın Hazır</h3>
+        <button id="workshop-share-close" type="button" class="h-9 w-9 rounded-full border border-gray-200 bg-white text-zinc-700 hover:border-gray-300 flex items-center justify-center leading-none" aria-label="Kapat">
+          ×
+        </button>
+      </div>
+      <p class="text-sm text-zinc-600">Öğrenciye gönderilecek mesaj panoya kopyalandı.</p>
+      <div class="space-y-2">
+        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Öğrenci Mesajı</p>
+        <textarea id="workshop-share-student-text" rows="4" readonly class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-zinc-700"></textarea>
+      </div>
+      <div class="space-y-2">
+        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Yayın Anahtarı</p>
+        <input id="workshop-share-stream-key" readonly class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-zinc-700">
+      </div>
+      <button id="workshop-share-ok" type="button" class="w-full py-2 rounded-lg bg-zinc-900 text-white text-sm font-semibold">Tamam</button>
+    </div>
+  </div>
+
   <section id="uzman-akisi" class="space-y-4 hidden md:max-w-5xl md:mx-auto">
     <div id="feed-main" class="p-4 md:p-6 space-y-4 md:max-w-3xl md:mx-auto">
       <div class="flex flex-wrap items-center justify-between gap-3">

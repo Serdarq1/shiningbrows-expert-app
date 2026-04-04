@@ -5,7 +5,7 @@ import uuid
 import bcrypt
 import base64
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from tempfile import NamedTemporaryFile
 import ssl
 import re
@@ -19,7 +19,6 @@ from typing import Any, Dict, List, Optional
 
 import jwt
 from jwt import PyJWKClient
-
 from dotenv import load_dotenv
 from flask import (
     Flask,
@@ -84,6 +83,8 @@ MUX_TOKEN_ID = os.getenv("MUX_TOKEN_ID", "")
 MUX_TOKEN_SECRET = os.getenv("MUX_TOKEN_SECRET", "")
 MUX_API_BASE = "https://api.mux.com"
 MUX_STREAM_BASE = "https://stream.mux.com"
+MUX_SIGNING_KEY_ID = os.getenv("MUX_SIGNING_KEY_ID", "")
+MUX_SIGNING_PRIVATE_KEY = os.getenv("MUX_SIGNING_PRIVATE_KEY", "")
 ALLOWED_REACTIONS = {"like", "love", "wow", "clap"}
 ELEVATED_ROLES = {"master", "admin"}
 ALLOWED_EXPERT_STATUSES = {"shining expert", "master trainer", "master assistant", "founder"}
@@ -301,6 +302,96 @@ def mux_create_asset(input_url: str, title: str = "") -> Dict[str, Any]:
         "duration": data.get("duration"),
     }
 
+
+def mux_create_live_stream(title: str = "") -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "playback_policies": ["signed"],
+        "new_asset_settings": {
+            "playback_policies": ["signed"],
+        },
+    }
+    if title:
+        payload["passthrough"] = title[:255]
+    response = mux_request("POST", "/video/v1/live-streams", payload)
+    data = response.get("data") or {}
+    playback_ids = data.get("playback_ids") or []
+    playback_id = ""
+    if playback_ids and isinstance(playback_ids[0], dict):
+        playback_id = playback_ids[0].get("id") or ""
+    if not data.get("id") or not data.get("stream_key") or not playback_id:
+        raise ValueError("Canlı yayın oturumu oluşturulamadı.")
+    return {
+        "live_stream_id": data["id"],
+        "playback_id": playback_id,
+        "stream_key": data.get("stream_key") or "",
+        "status": data.get("status") or "idle",
+    }
+
+def mux_get_live_stream(live_stream_id: str) -> Dict[str, Any]:
+    if not live_stream_id:
+        raise ValueError("Canlı yayın id'si bulunamadı.")
+    res = mux_request("GET", f"/video/v1/live-streams/{live_stream_id}")
+    data = res.get("data") or {}
+    if not data:
+        raise ValueError("Canlı yayın bulunamadı.")
+    
+    return {
+        "id" : data.get("id") or "",
+        "status": data.get("status") or "idle",
+        "stream_key": data.get("stream_key") or "",
+    }
+
+
+def is_mux_signing_enabled() -> bool:
+    return bool(MUX_SIGNING_KEY_ID and MUX_SIGNING_PRIVATE_KEY)
+
+
+def mux_private_key() -> str:
+    return MUX_SIGNING_PRIVATE_KEY.replace("\\n", "\n")
+
+
+def mux_sign_playback_token(playback_id: str, lifetime_minutes: int = 120) -> str:
+    if not playback_id:
+        raise ValueError("Playback kimliği bulunamadı.")
+    if not is_mux_signing_enabled():
+        raise ValueError("Mux playback signing yapılandırması eksik.")
+    now = datetime.now(UTC)
+    payload = {
+        "sub": playback_id,
+        "aud": "v",
+        "exp": int((now + timedelta(minutes=lifetime_minutes)).timestamp()),
+        "nbf": int(now.timestamp()) - 5,
+    }
+    headers = {"kid": MUX_SIGNING_KEY_ID, "typ": "JWT"}
+    return jwt.encode(payload, mux_private_key(), algorithm="RS256", headers=headers)
+
+
+def build_workshop_join_slug(title: str = "") -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", (title or "").lower()).strip("-")
+    base = base[:36] if base else "workshop"
+    return f"{base}-{uuid.uuid4().hex[:8]}"
+
+
+def get_live_workshop_access() -> Dict[str, str]:
+    raw = session.get("live_workshop_access")
+    return raw if isinstance(raw, dict) else {}
+
+
+def has_live_workshop_access(join_slug: str) -> bool:
+    access_map = get_live_workshop_access()
+    expires_at = access_map.get(join_slug)
+    if not expires_at:
+        return False
+    try:
+        return datetime.fromisoformat(expires_at) > datetime.now(UTC)
+    except ValueError:
+        return False
+
+
+def grant_live_workshop_access(join_slug: str, lifetime_hours: int = 6) -> None:
+    access_map = get_live_workshop_access()
+    access_map[join_slug] = (datetime.now(UTC) + timedelta(hours=lifetime_hours)).isoformat()
+    session["live_workshop_access"] = access_map
 
 def mux_get_asset(asset_id: str) -> Optional[Dict[str, Any]]:
     if not asset_id:
@@ -1211,6 +1302,83 @@ def api_videos_update_delete(video_id: int) -> Any:
 
     return jsonify({"ok": True})
 
+#* Streams
+
+@app.route("/api/workshops/<int:workshop_id>/live-sessions", methods=["POST"])
+def create_live_sessions(workshop_id: int):
+    current_user = get_current_student()
+    if not current_user:
+        return jsonify({"error": "Kullanıcı bulunamadı."}), 401
+    if current_user.get("role") not in ELEVATED_ROLES:
+        return jsonify({"error": "Bu işlem için yetkiniz bulunmamaktadır."}), 403
+    if not supabase:
+        return jsonify({"error": "Veritabanı hatası meydana geldi."}), 500
+    if not is_mux_enabled():
+        return jsonify({"error": "Video yayınlama hatası meydana geldi."}), 500
+
+    try:
+        response = supabase.table("workshops").select("*").eq("id", workshop_id).execute()
+        rows = getattr(response, "data", []) or []
+        if not rows:
+            return jsonify({"error": "Workshop bulunamadı."}), 404
+        workshop = rows[0]
+    except Exception as exc:
+        print("Workshop lookup failed:", exc)
+        return jsonify({"error": "Workshop bulunamadı."}), 404
+
+    existing_stream_id = (workshop.get("mux_live_stream_id") or "").strip()
+    existing_playback_id = (workshop.get("mux_playback_id") or "").strip()
+    existing_status = (workshop.get("live_status") or "").strip() or "draft"
+    if existing_stream_id and existing_playback_id and existing_status != "ended":
+        return jsonify({
+            "ok": True,
+            "created": False,
+            "workshop_id": workshop_id,
+            "title": workshop.get("title") or "Workshop",
+            "live_stream_id": existing_stream_id,
+            "playback_id": existing_playback_id,
+            "live_status": existing_status,
+        }), 200
+
+    payload = request.get_json() or {}
+    title = (payload.get("title") or workshop.get("title") or "Workshop").strip()
+
+    try:
+        live_stream = mux_create_live_stream(title)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        print("Live stream creation failed:", exc)
+        return jsonify({"error": "Yayın oluşturulurken hata meydana geldi."}), 500
+
+    updates = {
+        "live_enabled": True,
+        "live_status": live_stream["status"],
+        "mux_live_stream_id": live_stream["live_stream_id"],
+        "mux_playback_id": live_stream["playback_id"],
+    }
+
+    try:
+        supabase.table("workshops").update(updates).eq("id", workshop_id).execute()
+    except Exception as exc:
+        print("Workshop live session update failed:", exc)
+        return jsonify({
+            "error": "Workshop canlı yayın bilgisi kaydedilemedi.",
+            "detail": str(exc),
+            "updates": updates,
+        }), 500
+
+    return jsonify({
+        "ok": True,
+        "created": True,
+        "workshop_id": workshop_id,
+        "title": title,
+        "live_stream_id": live_stream["live_stream_id"],
+        "playback_id": live_stream["playback_id"],
+        "stream_key": live_stream["stream_key"],
+        "live_status": live_stream["status"],
+    }), 201
+
 
 @app.route("/api/books/upload", methods=["POST"])
 def api_books_upload() -> Any:
@@ -1261,6 +1429,187 @@ def api_books_upload() -> Any:
         print("Book DB insert failed:", exc)
     return jsonify(record), 201
 
+@app.route("/api/workshops/<int:workshop_id>/broadcast", methods=["GET"])
+def get_workshop_broadcast(workshop_id: int):
+    current_user = get_current_student()
+    if not current_user:
+        return jsonify({"error": "Kullanıcı bulunamadı."}), 401
+    if current_user.get("role") not in ELEVATED_ROLES:
+        return jsonify({"error": "Bu işlem için yetkiniz bulunmamaktadır."}), 403
+    if not supabase:
+        return jsonify({"error": "Veritabanı hatası meydana geldi."}), 500
+    if not is_mux_enabled():
+        return jsonify({"error": "Yayına bağlanırken hata yaşandı."}), 500
+    
+    try:
+        response = supabase.table("workshops").select("*").eq("id", workshop_id).execute()
+        rows = getattr(response, "data", []) or []
+        if not rows:
+            return jsonify({"error": "Workshop bulunamadı"}), 404
+        workshop = rows[0]
+    except Exception as e:
+        print("Workshop yayını bulunamadı: ", e)
+        return jsonify({"error": "Workshop bulunamadı"}), 404
+    
+    mux_live_stream_id = (workshop.get("mux_live_stream_id") or "").strip()
+    if not mux_live_stream_id:
+        return jsonify({"error": "Bu workshop şu anda yayında değil."}), 404
+    
+    try:
+        mux_data = mux_get_live_stream(mux_live_stream_id)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        print("Canlı yayın bulunamadı: ", e)
+        return jsonify({"error": "Yayın bilgileri alınamadı."}), 500
+    
+    return jsonify({
+        "ok": True,
+        "workshop_id": workshop_id,
+        "title": workshop.get("title") or "Workshop",
+        "live_stream_id": mux_live_stream_id,
+        "playback_id": workshop.get("mux_playback_id"),
+        "stream_key": mux_data.get("stream_key"),
+        "stream_status": mux_data.get("status"),
+    }), 200
+
+
+@app.route("/api/workshops/<int:workshop_id>/share-access", methods=["POST"])
+def update_workshop_share_access(workshop_id: int):
+    current_user = get_current_student()
+    if not current_user:
+        return jsonify({"error": "Kullanıcı bulunamadı."}), 401
+    if current_user.get("role") not in ELEVATED_ROLES:
+        return jsonify({"error": "Bu işlem için yetkiniz bulunmamaktadır."}), 403
+    if not supabase:
+        return jsonify({"error": "Veritabanı hatası meydana geldi."}), 500
+
+    try:
+        response = supabase.table("workshops").select("*").eq("id", workshop_id).execute()
+        rows = getattr(response, "data", []) or []
+        if not rows:
+            return jsonify({"error": "Workshop bulunamadı."}), 404
+        workshop = rows[0]
+    except Exception as exc:
+        print("Workshop lookup failed:", exc)
+        return jsonify({"error": "Workshop bulunamadı."}), 404
+
+    payload = request.get_json() or {}
+    password = (payload.get("password") or "").strip()
+    if len(password) < 4:
+        return jsonify({"error": "Şifre en az 4 karakter olmalıdır."}), 400
+
+    join_slug = (workshop.get("join_slug") or "").strip() or build_workshop_join_slug(workshop.get("title") or "workshop")
+    updates = {
+        "join_slug": join_slug,
+        "password_required": True,
+        "join_password_hash": generate_password_hash(password),
+    }
+
+    try:
+        supabase.table("workshops").update(updates).eq("id", workshop_id).execute()
+    except Exception as exc:
+        print("Workshop share access update failed:", exc)
+        return jsonify({"error": "Workshop erişim bilgileri kaydedilemedi."}), 500
+
+    return jsonify({
+        "ok": True,
+        "workshop_id": workshop_id,
+        "join_slug": join_slug,
+        "join_url": url_for("live_workshop_page", join_slug=join_slug, _external=True),
+    }), 200
+
+
+@app.route("/live/<join_slug>")
+def live_workshop_page(join_slug: str) -> Any:
+    return render_template("live_workshop.html", join_slug=join_slug)
+
+
+@app.route("/api/live-workshops/<join_slug>", methods=["GET"])
+def live_workshop_details(join_slug: str):
+    if not supabase:
+        return jsonify({"error": "Veritabanı hatası meydana geldi."}), 500
+    try:
+        response = supabase.table("workshops").select("*").eq("join_slug", join_slug).execute()
+        rows = getattr(response, "data", []) or []
+        if not rows:
+            return jsonify({"error": "Canlı workshop bulunamadı."}), 404
+        workshop = rows[0]
+    except Exception as exc:
+        print("Live workshop detail failed:", exc)
+        return jsonify({"error": "Canlı workshop bulunamadı."}), 404
+
+    return jsonify({
+        "ok": True,
+        "title": workshop.get("title") or "Workshop",
+        "instructor": workshop.get("instructor") or "",
+        "date": workshop.get("date") or "",
+        "location": workshop.get("location") or "",
+        "live_status": workshop.get("live_status") or "draft",
+        "password_required": bool(workshop.get("password_required", True)),
+        "unlocked": has_live_workshop_access(join_slug),
+    }), 200
+
+
+@app.route("/api/live-workshops/<join_slug>/unlock", methods=["POST"])
+def unlock_live_workshop(join_slug: str):
+    if not supabase:
+        return jsonify({"error": "Veritabanı hatası meydana geldi."}), 500
+    try:
+        response = supabase.table("workshops").select("*").eq("join_slug", join_slug).execute()
+        rows = getattr(response, "data", []) or []
+        if not rows:
+            return jsonify({"error": "Canlı workshop bulunamadı."}), 404
+        workshop = rows[0]
+    except Exception as exc:
+        print("Live workshop unlock lookup failed:", exc)
+        return jsonify({"error": "Canlı workshop bulunamadı."}), 404
+
+    password_required = bool(workshop.get("password_required", True))
+    if password_required:
+        payload = request.get_json() or {}
+        password = (payload.get("password") or "").strip()
+        stored_hash = workshop.get("join_password_hash") or ""
+        if not password or not stored_hash or not check_password_hash(stored_hash, password):
+            return jsonify({"error": "Şifre hatalı."}), 403
+
+    grant_live_workshop_access(join_slug)
+    return jsonify({"ok": True, "live_status": workshop.get("live_status") or "draft"}), 200
+
+
+@app.route("/api/live-workshops/<join_slug>/watch", methods=["GET"])
+def watch_live_workshop(join_slug: str):
+    if not supabase:
+        return jsonify({"error": "Veritabanı hatası meydana geldi."}), 500
+    if not has_live_workshop_access(join_slug):
+        return jsonify({"error": "Yayın erişimi için önce şifre giriniz."}), 403
+
+    try:
+        response = supabase.table("workshops").select("*").eq("join_slug", join_slug).execute()
+        rows = getattr(response, "data", []) or []
+        if not rows:
+            return jsonify({"error": "Canlı workshop bulunamadı."}), 404
+        workshop = rows[0]
+    except Exception as exc:
+        print("Live workshop watch lookup failed:", exc)
+        return jsonify({"error": "Canlı workshop bulunamadı."}), 404
+
+    playback_id = (workshop.get("mux_playback_id") or "").strip()
+    if not playback_id:
+        return jsonify({"error": "Bu yayın henüz hazır değil."}), 404
+
+    try:
+        playback_token = mux_sign_playback_token(playback_id)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    return jsonify({
+        "ok": True,
+        "title": workshop.get("title") or "Workshop",
+        "playback_id": playback_id,
+        "playback_token": playback_token,
+        "live_status": workshop.get("live_status") or "draft",
+    }), 200
 
 # ---------- Photos ----------
 
@@ -2360,6 +2709,8 @@ def product_detail(product_id: str) -> Any:
     except Exception as exc:
         print("Product detail fetch failed:", exc)
         return jsonify({"error": "Ürün yüklenemedi."}), 500
+    
+
 
 if __name__ == "__main__":
     app.run(debug=True)
