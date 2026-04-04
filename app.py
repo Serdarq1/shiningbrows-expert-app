@@ -86,7 +86,7 @@ MUX_API_BASE = "https://api.mux.com"
 MUX_STREAM_BASE = "https://stream.mux.com"
 ALLOWED_REACTIONS = {"like", "love", "wow", "clap"}
 ELEVATED_ROLES = {"master", "admin"}
-ALLOWED_EXPERT_STATUSES = {"shining expert", "master trainer"}
+ALLOWED_EXPERT_STATUSES = {"shining expert", "master trainer", "master assistant", "founder"}
 MAX_VIDEO_MB = int(os.getenv("MAX_VIDEO_MB", "250"))
 DISABLE_SSL_VERIFY = os.getenv("DISABLE_SSL_VERIFY", "false").lower() in ("1", "true", "yes")
 DOWNLOAD_TIMEOUT_SEC = int(os.getenv("DOWNLOAD_TIMEOUT_SEC", "60"))
@@ -2110,6 +2110,39 @@ def update_profile() -> Any:
         return jsonify({"error": "Profil güncellenemedi."}), 500
 
     return jsonify({"ok": True, **updates})
+
+
+@app.route("/api/experts/<expert_id>/status", methods=["POST"])
+def update_expert_status(expert_id: str) -> Any:
+    student = get_current_student()
+    if not student:
+        return jsonify({"error": "Oturum bulunamadı"}), 401
+    if student.get("role") != "admin":
+        return jsonify({"error": "Bu işlem için yetkiniz yok."}), 403
+    if not supabase:
+        return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+
+    payload = request.get_json() or {}
+    expert_status = (payload.get("expert_status") or "").strip().lower()
+    if expert_status not in ALLOWED_EXPERT_STATUSES:
+        return jsonify({"error": "Geçersiz uzmanlık durumu."}), 400
+
+    try:
+        response = (
+            supabase.table("shining_brows_student_database")
+            .update({"expert_status": expert_status})
+            .eq("id", expert_id)
+            .execute()
+        )
+        updated = getattr(response, "data", []) or []
+    except Exception as exc:
+        print("Expert status update failed:", exc)
+        return jsonify({"error": "Uzmanlık güncellenemedi."}), 500
+
+    if not updated:
+        return jsonify({"error": "Uzman bulunamadı."}), 404
+
+    return jsonify({"ok": True, "expert_status": expert_status})
 
 
 @app.route("/api/account/avatar", methods=["POST"])

@@ -491,8 +491,28 @@ function formatExpertStatus(status) {
   const normalized = String(status).toLowerCase().trim();
   if (normalized === "student") return "Shining Expert";
   if (normalized === "shining expert") return "Shining Expert";
-  if (normalized === "master trainer") return "Master Trainer";
+  if (normalized === "master assistant") return "Master Assistant";
+  if (normalized === "master trainer" || normalized === "founder") return "Founder";
   return status;
+}
+
+function normalizeExpertStatusForInput(status) {
+  const normalized = String(status || "").toLowerCase().trim();
+  if (normalized === "founder") return "master trainer";
+  if (normalized === "student") return "shining expert";
+  return normalized;
+}
+
+function buildExpertStatusOptions(selectedStatus) {
+  const normalized = normalizeExpertStatusForInput(selectedStatus);
+  const options = [
+    { value: "shining expert", label: "Shining Expert" },
+    { value: "master assistant", label: "Master Assistant" },
+    { value: "master trainer", label: "Master Trainer" },
+  ];
+  return options
+    .map((option) => `<option value="${option.value}"${option.value === normalized ? " selected" : ""}>${option.label}</option>`)
+    .join("");
 }
 
 function parsePhoneNumber(rawPhone = "") {
@@ -613,6 +633,7 @@ async function loadStudent() {
     refreshPasswordUI();
     refreshWorkshopAdminVisibility();
     applyRoleVisibility(currentUserRole);
+    loadExperts();
     loadFeed();
   } catch (err) {
     console.error(err);
@@ -1533,6 +1554,13 @@ async function loadExperts() {
       const statusLabel = formatExpertStatus(expert.expert_status);
       const phoneLabel = expert.phone || "-";
       const cityLabel = expert.city || "-";
+      const statusCell = currentUserRole === "admin"
+        ? `
+          <select class="expert-status-input rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-zinc-800" data-expert-id="${expert.id}">
+            ${buildExpertStatusOptions(expert.expert_status)}
+          </select>
+        `
+        : statusLabel;
       row.innerHTML = `
         <td class="py-2 pr-4">
           <div class="w-9 h-9 rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
@@ -1540,12 +1568,39 @@ async function loadExperts() {
           </div>
         </td>
         <td class="py-2 pr-4 font-semibold">${toTitleCase(expert.name) || "-"}</td>
-        <td class="py-2 pr-4">${statusLabel}</td>
+        <td class="py-2 pr-4">${statusCell}</td>
         <td class="py-2 pr-4">${phoneLabel}</td>
         <td class="py-2 pr-4">${cityLabel}</td>
       `;
       table.appendChild(row);
     });
+    if (currentUserRole === "admin") {
+      table.querySelectorAll(".expert-status-input").forEach((input) => {
+        input.dataset.previousStatus = normalizeExpertStatusForInput(input.value);
+        input.addEventListener("change", async (event) => {
+          const select = event.currentTarget;
+          const previousStatus = select.dataset.previousStatus || normalizeExpertStatusForInput(select.value);
+          const nextStatus = select.value;
+          const expertId = select.dataset.expertId;
+          select.disabled = true;
+          try {
+            await fetchJSON(`/api/experts/${expertId}/status`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ expert_status: nextStatus }),
+            });
+            select.dataset.previousStatus = nextStatus;
+            showToast("Uzmanlık güncellendi.", { type: "success" });
+            loadExperts();
+          } catch (err) {
+            select.value = previousStatus;
+            showToast("Uzmanlık güncellenemedi.", { type: "error" });
+          } finally {
+            select.disabled = false;
+          }
+        });
+      });
+    }
   } catch (err) {
     table.innerHTML = '<tr><td class="py-3 text-sm text-red-500" colspan="5">Uzmanlar yüklenemedi.</td></tr>';
   }
@@ -1772,9 +1827,6 @@ async function setupClerkAccount() {
     container.innerHTML = '<div id="clerk-user-button"></div>';
     const userButtonDiv = document.getElementById("clerk-user-button");
     if (userButtonDiv) Clerk.mountUserButton(userButtonDiv);
-    if (profileContainer && profileContainer !== container) {
-      profileContainer.innerHTML = '<p class="text-sm text-zinc-500">Hesap menüsü sol menüde görünüyor.</p>';
-    }
   } catch (err) {
     console.error("Clerk load failed", err);
   }
