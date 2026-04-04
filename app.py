@@ -1602,6 +1602,9 @@ def watch_live_workshop(join_slug: str):
         playback_token = mux_sign_playback_token(playback_id)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 500
+    except Exception as exc:
+        print("Live workshop playback token failed:", exc)
+        return jsonify({"error": "Yayın erişimi oluşturulamadı."}), 500
 
     return jsonify({
         "ok": True,

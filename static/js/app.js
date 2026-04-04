@@ -1121,13 +1121,28 @@ function closeWorkshopLiveDialog() {
   pendingWorkshopLive = null;
 }
 
-function openWorkshopShareDialog(studentText, streamKey) {
+async function copyTextValue(value) {
+  if (!value) return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      showToast("Panoya kaydedildi.", { type: "success" });
+      return;
+    }
+  } catch (err) {
+    console.warn("Clipboard copy failed", err);
+  }
+}
+
+function openWorkshopShareDialog(joinUrl, password, streamKey) {
   const overlay = document.getElementById("workshop-share-overlay");
   const panel = document.getElementById("workshop-share-panel");
-  const studentField = document.getElementById("workshop-share-student-text");
+  const linkField = document.getElementById("workshop-share-link");
+  const passwordField = document.getElementById("workshop-share-password");
   const streamKeyField = document.getElementById("workshop-share-stream-key");
   if (!overlay || !panel) return;
-  if (studentField) studentField.value = studentText || "";
+  if (linkField) linkField.value = joinUrl || "";
+  if (passwordField) passwordField.value = password || "";
   if (streamKeyField) streamKeyField.value = streamKey || "-";
   overlay.classList.remove("pointer-events-none", "opacity-0");
   overlay.classList.add("opacity-100");
@@ -1219,9 +1234,30 @@ function setupWorkshopShareDialog() {
   const closeBtn = document.getElementById("workshop-share-close");
   const okBtn = document.getElementById("workshop-share-ok");
   const overlay = document.getElementById("workshop-share-overlay");
+  const linkField = document.getElementById("workshop-share-link");
+  const passwordField = document.getElementById("workshop-share-password");
+  const streamKeyField = document.getElementById("workshop-share-stream-key");
   if (closeBtn) closeBtn.addEventListener("click", closeWorkshopShareDialog);
   if (okBtn) okBtn.addEventListener("click", closeWorkshopShareDialog);
   if (overlay) overlay.addEventListener("click", closeWorkshopShareDialog);
+  if (linkField) {
+    linkField.addEventListener("click", async () => {
+      linkField.select();
+      await copyTextValue(linkField.value);
+    });
+  }
+  if (passwordField) {
+    passwordField.addEventListener("click", async () => {
+      passwordField.select();
+      await copyTextValue(passwordField.value);
+    });
+  }
+  if (streamKeyField) {
+    streamKeyField.addEventListener("click", async () => {
+      streamKeyField.select();
+      await copyTextValue(streamKeyField.value);
+    });
+  }
 }
 
 async function loadRules() {
@@ -1527,15 +1563,14 @@ async function createWorkshopLiveAccess(workshop, rawPassword) {
       body: JSON.stringify({ password }),
     });
     const broadcast = await fetchJSON(`/api/workshops/${workshopId}/broadcast`);
-    const studentShareText = `Workshop linki: ${share.join_url}\nŞifre: ${password}`;
     try {
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(studentShareText);
+        await navigator.clipboard.writeText(`Workshop linki: ${share.join_url}\nŞifre: ${password}`);
       }
     } catch (err) {
       console.warn("Clipboard copy failed", err);
     }
-    openWorkshopShareDialog(studentShareText, broadcast.stream_key || "-");
+    openWorkshopShareDialog(share.join_url, password, broadcast.stream_key || "-");
     showToast("Yayın bağlantısı hazırlandı.", { type: "success" });
   } catch (err) {
     showToast(err.message || "Yayın hazırlanamadı.", { type: "error" });
