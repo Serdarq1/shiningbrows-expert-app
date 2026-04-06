@@ -1240,15 +1240,21 @@ function createParticipantCard(identity, label) {
   card.className = "rounded-sm border border-gray-200 bg-white overflow-hidden relative";
   card.dataset.identity = identity;
   card.innerHTML = `
-    <div class="hidden md:block absolute left-3 top-3 z-10 rounded-sm border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-zinc-700">${escapeHTML(label)}</div>
+    <div class="mobile-live-hidden md:block absolute left-3 top-3 z-10 rounded-sm border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-zinc-700">${escapeHTML(label)}</div>
     <div class="participant-media h-full w-full bg-gray-50 flex items-center justify-center text-sm text-zinc-500">Bağlantı bekleniyor...</div>
     <div class="participant-audio"></div>
   `;
   return card;
 }
 
+function isMobileLiveUI() {
+  return window.matchMedia?.("(max-width: 768px)")?.matches || false;
+}
+
 function attachTrackToCard(track, card) {
   if (!track || !card) return;
+  const isLocalCard = card.dataset.identity === liveWorkshopRoom?.localParticipant?.identity;
+  if (track.kind === "audio" && isLocalCard) return;
   track.detach().forEach((element) => element.remove());
   const element = track.attach();
   const isScreenTrack = track.kind === "video" && String(track.name || "").toLowerCase() === "screen";
@@ -1259,15 +1265,11 @@ function attachTrackToCard(track, card) {
     Array.from(audioHost.children).forEach((child) => child.remove());
     element.autoplay = true;
     element.playsInline = true;
-    if (card.dataset.identity === liveWorkshopRoom?.localParticipant?.identity) {
-      element.muted = true;
-      return;
-    }
     audioHost.appendChild(element);
     if (!card.querySelector("[data-audio-badge='true']")) {
       const badge = document.createElement("div");
       badge.dataset.audioBadge = "true";
-      badge.className = "hidden md:block absolute right-3 bottom-3 z-10 rounded-sm border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-zinc-700";
+      badge.className = "mobile-live-hidden md:block absolute right-3 bottom-3 z-10 rounded-sm border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-zinc-700";
       badge.textContent = "Ses açık";
       card.appendChild(badge);
     }
@@ -1342,11 +1344,16 @@ function detachParticipantTracks(participant) {
 }
 
 async function createLiveAudioTrack() {
-  const baseOptions = {
-    echoCancellation: true,
-    autoGainControl: true,
-  };
-  if (twilioKrispAssetsPath) {
+  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+  const baseOptions = isIOS
+    ? {
+        echoCancellation: true,
+      }
+    : {
+        echoCancellation: true,
+        autoGainControl: true,
+      };
+  if (!isIOS && twilioKrispAssetsPath) {
     try {
       return await window.Twilio.Video.createLocalAudioTrack({
         ...baseOptions,
@@ -1362,7 +1369,7 @@ async function createLiveAudioTrack() {
   }
   return window.Twilio.Video.createLocalAudioTrack({
     ...baseOptions,
-    noiseSuppression: true,
+    ...(isIOS ? {} : { noiseSuppression: true }),
   });
 }
 
@@ -1502,6 +1509,9 @@ function renderRoomParticipants() {
     const preferredTrack = getPrimaryVideoTrack(participant);
     if (preferredTrack) attachTrackToCard(preferredTrack, card);
     getParticipantAudioTracks(participant).forEach((track) => attachTrackToCard(track, card));
+    if (isMobileLiveUI()) {
+      return;
+    }
     const row = document.createElement("div");
     row.className = "rounded-sm border border-gray-200 bg-white px-3 py-2";
     row.innerHTML = `
@@ -1511,7 +1521,7 @@ function renderRoomParticipants() {
     list.appendChild(row);
   });
   if (summary) {
-    summary.textContent = `${participants.length} katılımcı odada.`;
+    summary.textContent = isMobileLiveUI() ? "" : `${participants.length} katılımcı odada.`;
   }
 }
 
@@ -1550,6 +1560,13 @@ function syncLiveParticipantsPanel() {
   const shell = document.getElementById("live-workshop-shell");
   const toggle = document.getElementById("live-participants-toggle");
   if (!panel || !shell || !toggle) return;
+  if (isMobileLiveUI()) {
+    panel.classList.add("hidden");
+    toggle.classList.add("hidden");
+    shell.classList.remove("md:grid-cols-[minmax(0,1fr)_20rem]");
+    shell.classList.add("md:grid-cols-1");
+    return;
+  }
   panel.classList.toggle("hidden", liveParticipantsCollapsed);
   if (liveParticipantsCollapsed) {
     shell.classList.remove("md:grid-cols-[minmax(0,1fr)_20rem]");
@@ -1573,7 +1590,7 @@ function applyLiveViewerMode() {
   if (!root || !header || !controls || !panel || !shell || !stage || !button) return;
   header.classList.toggle("hidden", liveViewerMode);
   controls.classList.toggle("hidden", liveViewerMode);
-  panel.classList.toggle("hidden", liveViewerMode || liveParticipantsCollapsed);
+  panel.classList.toggle("hidden", isMobileLiveUI() || liveViewerMode || liveParticipantsCollapsed);
   if (viewerBar) viewerBar.classList.toggle("hidden", !liveViewerMode);
   shell.classList.toggle("p-0", liveViewerMode);
   shell.classList.toggle("p-4", !liveViewerMode);
