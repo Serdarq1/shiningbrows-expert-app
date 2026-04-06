@@ -1240,7 +1240,7 @@ function createParticipantCard(identity, label) {
   card.className = "rounded-sm border border-gray-200 bg-white overflow-hidden relative";
   card.dataset.identity = identity;
   card.innerHTML = `
-    <div class="absolute left-3 top-3 z-10 rounded-sm border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-zinc-700">${escapeHTML(label)}</div>
+    <div class="hidden md:block absolute left-3 top-3 z-10 rounded-sm border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-zinc-700">${escapeHTML(label)}</div>
     <div class="participant-media h-full w-full bg-gray-50 flex items-center justify-center text-sm text-zinc-500">Bağlantı bekleniyor...</div>
     <div class="participant-audio"></div>
   `;
@@ -1267,7 +1267,7 @@ function attachTrackToCard(track, card) {
     if (!card.querySelector("[data-audio-badge='true']")) {
       const badge = document.createElement("div");
       badge.dataset.audioBadge = "true";
-      badge.className = "absolute right-3 bottom-3 z-10 rounded-sm border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-zinc-700";
+      badge.className = "hidden md:block absolute right-3 bottom-3 z-10 rounded-sm border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-zinc-700";
       badge.textContent = "Ses açık";
       card.appendChild(badge);
     }
@@ -1432,7 +1432,7 @@ async function ensureLiveAudioPublished() {
   return newTrack;
 }
 
-function teardownLiveWorkshopRoom(room) {
+function teardownLiveWorkshopRoom(room, { disconnect = true } = {}) {
   if (!room) return;
   detachParticipantTracks(room.localParticipant);
   room.participants.forEach((participant) => detachParticipantTracks(participant));
@@ -1455,7 +1455,9 @@ function teardownLiveWorkshopRoom(room) {
     }
     liveWorkshopScreenTrack = null;
   }
-  room.disconnect();
+  if (disconnect) {
+    room.disconnect();
+  }
 }
 
 function getFeaturedParticipantIdentity(participants) {
@@ -1596,8 +1598,9 @@ async function closeLiveWorkshopPanel({ keepRoomState = false } = {}) {
     liveWorkshopRefreshTimer = null;
   }
   if (!keepRoomState && liveWorkshopRoom) {
-    teardownLiveWorkshopRoom(liveWorkshopRoom);
+    const roomToClose = liveWorkshopRoom;
     liveWorkshopRoom = null;
+    teardownLiveWorkshopRoom(roomToClose);
   }
   if (liveWorkshopScreenTrack) {
     liveWorkshopScreenTrack.stop();
@@ -1657,12 +1660,13 @@ async function connectToWorkshopRoom(workshop, endpoint) {
     if (!localTracks.length) {
       throw new Error("Kamera veya mikrofon açılamadı.");
     }
-    liveWorkshopRoom = await window.Twilio.Video.connect(payload.token, {
+    const room = await window.Twilio.Video.connect(payload.token, {
       name: payload.room_name,
       tracks: localTracks,
       dominantSpeaker: true,
       networkQuality: { local: 1, remote: 1 },
     });
+    liveWorkshopRoom = room;
     await ensureLiveAudioPublished();
   } catch (err) {
     [audioTrack, videoTrack].filter(Boolean).forEach((track) => {
@@ -1685,8 +1689,10 @@ async function connectToWorkshopRoom(workshop, endpoint) {
     renderRoomParticipants();
     window.setTimeout(() => renderRoomParticipants(), 0);
   });
-  liveWorkshopRoom.on("disconnected", () => {
-    teardownLiveWorkshopRoom(liveWorkshopRoom);
+  const roomRef = liveWorkshopRoom;
+  roomRef.on("disconnected", () => {
+    if (liveWorkshopRoom !== roomRef) return;
+    teardownLiveWorkshopRoom(roomRef, { disconnect: false });
     liveWorkshopRoom = null;
     renderRoomParticipants();
     loadWorkshop();
@@ -1801,8 +1807,9 @@ function setupLiveWorkshopUI() {
   });
   const releaseLiveMedia = () => {
     if (!liveWorkshopRoom) return;
-    teardownLiveWorkshopRoom(liveWorkshopRoom);
+    const roomToClose = liveWorkshopRoom;
     liveWorkshopRoom = null;
+    teardownLiveWorkshopRoom(roomToClose);
     liveWorkshopCurrent = null;
     liveViewerMode = false;
   };
