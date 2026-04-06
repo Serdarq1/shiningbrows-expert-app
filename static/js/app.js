@@ -35,7 +35,10 @@ let orderHistoryHasMore = false;
 const CART_STORAGE_KEY = "sb_order_cart_v1";
 let pendingOpenCart = false;
 let activeDeletePopover = null;
-let pendingWorkshopLive = null;
+let liveWorkshopRoom = null;
+let liveWorkshopScreenTrack = null;
+let liveWorkshopRefreshTimer = null;
+let latestWorkshops = [];
 
 document.addEventListener("DOMContentLoaded", () => {
   const searchParams = new URLSearchParams(window.location.search);
@@ -75,8 +78,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupOrderActions();
   loadOrderHistory();
   setupWorkshopSignup();
-  setupWorkshopLiveDialog();
-  setupWorkshopShareDialog();
+  setupLiveWorkshopUI();
 });
 
 function saveCart() {
@@ -1087,40 +1089,6 @@ function closeWorkshopSignup() {
   panel.classList.remove("opacity-100");
 }
 
-function openWorkshopLiveDialog(workshop) {
-  const overlay = document.getElementById("workshop-live-overlay");
-  const panel = document.getElementById("workshop-live-panel");
-  const input = document.getElementById("workshop-live-password");
-  const eyeOpen = document.getElementById("workshop-live-eye-open");
-  const eyeClosed = document.getElementById("workshop-live-eye-closed");
-  const toggleBtn = document.getElementById("workshop-live-password-toggle");
-  pendingWorkshopLive = workshop || null;
-  if (!overlay || !panel) return;
-  if (input) {
-    input.value = "";
-    input.type = "password";
-  }
-  if (eyeOpen) eyeOpen.classList.remove("hidden");
-  if (eyeClosed) eyeClosed.classList.add("hidden");
-  if (toggleBtn) toggleBtn.setAttribute("aria-label", "Şifreyi göster");
-  overlay.classList.remove("pointer-events-none", "opacity-0");
-  overlay.classList.add("opacity-100");
-  panel.classList.remove("pointer-events-none", "opacity-0");
-  panel.classList.add("opacity-100");
-  if (input) setTimeout(() => input.focus(), 50);
-}
-
-function closeWorkshopLiveDialog() {
-  const overlay = document.getElementById("workshop-live-overlay");
-  const panel = document.getElementById("workshop-live-panel");
-  if (!overlay || !panel) return;
-  overlay.classList.add("pointer-events-none", "opacity-0");
-  overlay.classList.remove("opacity-100");
-  panel.classList.add("pointer-events-none", "opacity-0");
-  panel.classList.remove("opacity-100");
-  pendingWorkshopLive = null;
-}
-
 async function copyTextValue(value) {
   if (!value) return;
   try {
@@ -1132,32 +1100,6 @@ async function copyTextValue(value) {
   } catch (err) {
     console.warn("Clipboard copy failed", err);
   }
-}
-
-function openWorkshopShareDialog(joinUrl, password, streamKey) {
-  const overlay = document.getElementById("workshop-share-overlay");
-  const panel = document.getElementById("workshop-share-panel");
-  const linkField = document.getElementById("workshop-share-link");
-  const passwordField = document.getElementById("workshop-share-password");
-  const streamKeyField = document.getElementById("workshop-share-stream-key");
-  if (!overlay || !panel) return;
-  if (linkField) linkField.value = joinUrl || "";
-  if (passwordField) passwordField.value = password || "";
-  if (streamKeyField) streamKeyField.value = streamKey || "-";
-  overlay.classList.remove("pointer-events-none", "opacity-0");
-  overlay.classList.add("opacity-100");
-  panel.classList.remove("pointer-events-none", "opacity-0");
-  panel.classList.add("opacity-100");
-}
-
-function closeWorkshopShareDialog() {
-  const overlay = document.getElementById("workshop-share-overlay");
-  const panel = document.getElementById("workshop-share-panel");
-  if (!overlay || !panel) return;
-  overlay.classList.add("pointer-events-none", "opacity-0");
-  overlay.classList.remove("opacity-100");
-  panel.classList.add("pointer-events-none", "opacity-0");
-  panel.classList.remove("opacity-100");
 }
 
 function setupWorkshopSignup() {
@@ -1194,70 +1136,361 @@ function setupWorkshopSignup() {
   });
 }
 
-function setupWorkshopLiveDialog() {
-  const form = document.getElementById("workshop-live-form");
-  const closeBtn = document.getElementById("workshop-live-close");
-  const cancelBtn = document.getElementById("workshop-live-cancel");
-  const overlay = document.getElementById("workshop-live-overlay");
-  const input = document.getElementById("workshop-live-password");
-  const toggleBtn = document.getElementById("workshop-live-password-toggle");
-  const eyeOpen = document.getElementById("workshop-live-eye-open");
-  const eyeClosed = document.getElementById("workshop-live-eye-closed");
-  if (closeBtn) closeBtn.addEventListener("click", closeWorkshopLiveDialog);
-  if (cancelBtn) cancelBtn.addEventListener("click", closeWorkshopLiveDialog);
-  if (overlay) overlay.addEventListener("click", closeWorkshopLiveDialog);
-  if (toggleBtn && input) {
-    toggleBtn.addEventListener("click", () => {
-      const isHidden = input.type === "password";
-      input.type = isHidden ? "text" : "password";
-      if (eyeOpen) eyeOpen.classList.toggle("hidden", isHidden);
-      if (eyeClosed) eyeClosed.classList.toggle("hidden", !isHidden);
-      toggleBtn.setAttribute("aria-label", isHidden ? "Şifreyi gizle" : "Şifreyi göster");
-    });
-  }
-  if (!form || !input) return;
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const workshop = pendingWorkshopLive;
-    const password = input.value.trim();
-    if (!workshop || !password) return;
-    if (password.length < 4) {
-      showToast("Şifre en az 4 karakter olmalıdır.", { type: "error" });
-      return;
-    }
-    closeWorkshopLiveDialog();
-    await createWorkshopLiveAccess(workshop, password);
-  });
+function getLiveWorkshopHeroTarget() {
+  if (!latestWorkshops.length) return null;
+  return latestWorkshops.find((workshop) => workshop.live_status === "live") || latestWorkshops[0];
 }
 
-function setupWorkshopShareDialog() {
-  const closeBtn = document.getElementById("workshop-share-close");
-  const okBtn = document.getElementById("workshop-share-ok");
-  const overlay = document.getElementById("workshop-share-overlay");
-  const linkField = document.getElementById("workshop-share-link");
-  const passwordField = document.getElementById("workshop-share-password");
-  const streamKeyField = document.getElementById("workshop-share-stream-key");
-  if (closeBtn) closeBtn.addEventListener("click", closeWorkshopShareDialog);
-  if (okBtn) okBtn.addEventListener("click", closeWorkshopShareDialog);
-  if (overlay) overlay.addEventListener("click", closeWorkshopShareDialog);
-  if (linkField) {
-    linkField.addEventListener("click", async () => {
-      linkField.select();
-      await copyTextValue(linkField.value);
-    });
+function renderLiveWorkshopHero() {
+  const statusEl = document.getElementById("live-workshop-hero-status");
+  const actionsEl = document.getElementById("live-workshop-hero-actions");
+  if (!statusEl || !actionsEl) return;
+  actionsEl.innerHTML = "";
+  const target = getLiveWorkshopHeroTarget();
+  if (!target) {
+    statusEl.textContent = "Henüz aktif yayın yok.";
+    return;
   }
-  if (passwordField) {
-    passwordField.addEventListener("click", async () => {
-      passwordField.select();
-      await copyTextValue(passwordField.value);
-    });
+  if (target.live_status === "live") {
+    statusEl.textContent = `${target.title || "Workshop"} şu anda yayında.`;
+    if (!isGuestUser) {
+      const joinBtn = document.createElement("button");
+      joinBtn.type = "button";
+      joinBtn.className = "rounded-sm px-4 py-2 border border-gray-200 bg-white text-zinc-700 text-sm font-semibold hover:bg-gray-100";
+      joinBtn.textContent = "Yayına Katıl";
+      joinBtn.addEventListener("click", () => joinWorkshopLive(target));
+      actionsEl.appendChild(joinBtn);
+    }
+    if (isElevatedRole()) {
+      const endBtn = document.createElement("button");
+      endBtn.type = "button";
+      endBtn.className = "rounded-sm px-4 py-2 border border-red-200 bg-white text-sm font-semibold text-red-600 hover:bg-red-600 hover:text-white";
+      endBtn.textContent = "Yayını Bitir";
+      endBtn.addEventListener("click", () => endWorkshopLive(target));
+      actionsEl.appendChild(endBtn);
+    }
+    return;
   }
-  if (streamKeyField) {
-    streamKeyField.addEventListener("click", async () => {
-      streamKeyField.select();
-      await copyTextValue(streamKeyField.value);
-    });
+  statusEl.textContent = `${target.title || "Workshop"} için yayın henüz başlamadı.`;
+  if (isElevatedRole()) {
+    const startBtn = document.createElement("button");
+    startBtn.type = "button";
+    startBtn.className = "rounded-sm px-4 py-2 border border-gray-200 bg-white text-zinc-700 text-sm font-semibold cursor-pointer hover:bg-gray-100 transition";
+    startBtn.textContent = "Yayın Oluştur";
+    startBtn.addEventListener("click", () => startWorkshopLive(target));
+    actionsEl.appendChild(startBtn);
   }
+}
+
+function createWorkshopLiveActions(workshop) {
+  const isLive = workshop.live_status === "live";
+  const buttons = [];
+  if (isLive) {
+    if (!isGuestUser) {
+      buttons.push(`
+        <button type="button" class="rounded-sm px-3 py-2 border border-gray-200 bg-white text-xs font-semibold text-zinc-700 hover:bg-gray-100" data-live-action="join">
+          Yayına Katıl
+        </button>
+      `);
+    }
+    if (isElevatedRole()) {
+      buttons.push(`
+        <button type="button" class="rounded-sm px-3 py-2 border border-red-200 bg-white text-red-600 text-xs font-semibold hover:bg-red-600 hover:text-white" data-live-action="end">
+          Yayını Bitir
+        </button>
+      `);
+    }
+  } else if (isElevatedRole()) {
+    buttons.push(`
+      <button type="button" class="rounded-sm cursor-pointer px-3 py-2 border border-gray-200 bg-white text-xs font-semibold text-zinc-700 hover:bg-gray-100 transition" data-live-action="start">
+        Yayın Oluştur
+      </button>
+    `);
+  }
+  return buttons.join("");
+}
+
+function createParticipantCard(identity, label) {
+  const card = document.createElement("div");
+  card.className = "rounded-sm border border-gray-200 bg-white overflow-hidden relative";
+  card.dataset.identity = identity;
+  card.innerHTML = `
+    <div class="absolute left-3 top-3 z-10 rounded-sm border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-zinc-700">${escapeHTML(label)}</div>
+    <div class="participant-media h-full w-full bg-gray-50 flex items-center justify-center text-sm text-zinc-500">Bağlantı bekleniyor...</div>
+  `;
+  return card;
+}
+
+function attachTrackToCard(track, card) {
+  if (!track || !card) return;
+  const media = card.querySelector(".participant-media");
+  if (!media) return;
+  media.innerHTML = "";
+  const element = track.attach();
+  element.className = "h-full w-full object-cover";
+  if (track.kind === "video") {
+    element.setAttribute("playsinline", "true");
+    media.appendChild(element);
+  } else {
+    media.className = "participant-media h-full w-full bg-gray-50 flex items-center justify-center text-sm text-zinc-600";
+    media.innerHTML = `<div class="rounded-sm border border-gray-200 bg-white px-4 py-2">Ses bağlı</div>`;
+    media.appendChild(element);
+  }
+}
+
+function getParticipantDisplayName(identity) {
+  if (!identity) return "Katılımcı";
+  if (identity.startsWith("student:")) {
+    return `Uzman ${identity.split("student:")[1] || ""}`.trim();
+  }
+  if (identity.startsWith("user:")) {
+    return toTitleCase(identity.split("user:")[1].replace(/-/g, " "));
+  }
+  return toTitleCase(identity);
+}
+
+function renderRoomParticipants() {
+  const stage = document.getElementById("live-workshop-stage");
+  const list = document.getElementById("live-participant-list");
+  const summary = document.getElementById("live-participant-summary");
+  if (!stage || !list) return;
+  stage.innerHTML = "";
+  list.innerHTML = "";
+  if (!liveWorkshopRoom) {
+    stage.innerHTML = '<div class="md:col-span-2 rounded-sm border border-dashed border-gray-200 bg-gray-50 flex items-center justify-center text-sm text-zinc-500">Canlı oda açık değil.</div>';
+    if (summary) summary.textContent = "Henüz kimse bağlanmadı.";
+    return;
+  }
+  const participants = [liveWorkshopRoom.localParticipant, ...Array.from(liveWorkshopRoom.participants.values())];
+  participants.forEach((participant, index) => {
+    const identity = participant.identity || `participant-${index}`;
+    const isLocal = participant === liveWorkshopRoom.localParticipant;
+    const label = isLocal ? "Sen" : getParticipantDisplayName(identity);
+    const card = createParticipantCard(identity, label);
+    stage.appendChild(card);
+    const tracks = Array.from(participant.tracks.values())
+      .map((publication) => publication.track)
+      .filter(Boolean);
+    const preferredTrack = tracks.find((track) => track.kind === "video") || tracks[0];
+    if (preferredTrack) attachTrackToCard(preferredTrack, card);
+    const row = document.createElement("div");
+    row.className = "rounded-sm border border-gray-200 bg-white px-3 py-2";
+    row.innerHTML = `
+      <p class="text-sm font-semibold text-zinc-800">${escapeHTML(label)}</p>
+      <p class="text-xs text-zinc-500">${isLocal ? "Yerel yayın" : "Canlı bağlı"}</p>
+    `;
+    list.appendChild(row);
+  });
+  if (summary) {
+    summary.textContent = `${participants.length} katılımcı odada.`;
+  }
+}
+
+function bindParticipantEvents(participant) {
+  if (!participant) return;
+  participant.on("trackSubscribed", () => renderRoomParticipants());
+  participant.on("trackUnsubscribed", () => renderRoomParticipants());
+  participant.on("trackPublished", () => renderRoomParticipants());
+  participant.on("trackUnpublished", () => renderRoomParticipants());
+}
+
+function updateLiveControlLabels() {
+  const audioBtn = document.getElementById("live-toggle-audio");
+  const videoBtn = document.getElementById("live-toggle-video");
+  const screenBtn = document.getElementById("live-toggle-screen");
+  const endBtn = document.getElementById("live-end-session");
+  const roomStatus = document.getElementById("live-room-status");
+  if (!liveWorkshopRoom) return;
+  const localParticipant = liveWorkshopRoom.localParticipant;
+  const audioTrack = Array.from(localParticipant.audioTracks.values()).map((pub) => pub.track).find(Boolean);
+  const videoTrack = Array.from(localParticipant.videoTracks.values()).map((pub) => pub.track).find((track) => track !== liveWorkshopScreenTrack) || null;
+  if (audioBtn) audioBtn.textContent = audioTrack?.isEnabled ? "Mikrofonu Kapat" : "Mikrofonu Aç";
+  if (videoBtn) videoBtn.textContent = videoTrack?.isEnabled ? "Kamerayı Kapat" : "Kamerayı Aç";
+  if (screenBtn) {
+    screenBtn.textContent = liveWorkshopScreenTrack ? "Paylaşımı Durdur" : "Ekran Paylaş";
+    screenBtn.classList.toggle("hidden", !isElevatedRole());
+  }
+  if (endBtn) endBtn.classList.toggle("hidden", !isElevatedRole());
+  if (roomStatus) {
+    roomStatus.textContent = `${liveWorkshopRoom.name} odasına bağlısın. Ağ kalitesi ve medya durumu Twilio tarafından yönetiliyor.`;
+  }
+}
+
+async function closeLiveWorkshopPanel({ keepRoomState = false } = {}) {
+  const overlay = document.getElementById("live-workshop-overlay");
+  const panel = document.getElementById("live-workshop-panel");
+  if (overlay) {
+    overlay.classList.add("pointer-events-none", "opacity-0");
+    overlay.classList.remove("opacity-100");
+    overlay.classList.add("hidden");
+  }
+  if (panel) {
+    panel.classList.add("pointer-events-none", "opacity-0");
+    panel.classList.remove("opacity-100");
+    panel.classList.add("hidden");
+  }
+  if (liveWorkshopRefreshTimer) {
+    window.clearInterval(liveWorkshopRefreshTimer);
+    liveWorkshopRefreshTimer = null;
+  }
+  if (!keepRoomState && liveWorkshopRoom) {
+    liveWorkshopRoom.disconnect();
+    liveWorkshopRoom = null;
+  }
+  if (liveWorkshopScreenTrack) {
+    liveWorkshopScreenTrack.stop();
+    liveWorkshopScreenTrack = null;
+  }
+  renderRoomParticipants();
+}
+
+function openLiveWorkshopPanel(workshop, subtitle = "") {
+  const overlay = document.getElementById("live-workshop-overlay");
+  const panel = document.getElementById("live-workshop-panel");
+  const title = document.getElementById("live-workshop-title");
+  const subtitleEl = document.getElementById("live-workshop-subtitle");
+  if (title) title.textContent = workshop?.title || "Workshop yayını";
+  if (subtitleEl) subtitleEl.textContent = subtitle || [formatWorkshopDate(workshop?.date || ""), workshop?.location || ""].filter(Boolean).join(" • ");
+  if (overlay) {
+    overlay.classList.remove("hidden");
+    overlay.classList.remove("pointer-events-none", "opacity-0");
+    overlay.classList.add("opacity-100");
+  }
+  if (panel) {
+    panel.classList.remove("hidden");
+    panel.classList.remove("pointer-events-none", "opacity-0");
+    panel.classList.add("opacity-100");
+  }
+}
+
+async function connectToWorkshopRoom(workshop, endpoint) {
+  if (!window.Twilio?.Video) {
+    showToast("Twilio Video SDK yüklenemedi.", { type: "error" });
+    return;
+  }
+  const payload = await fetchJSON(endpoint, { method: "POST" });
+  openLiveWorkshopPanel(workshop, "Kamera ve mikrofon hazırlanıyor...");
+  try {
+    liveWorkshopRoom = await window.Twilio.Video.connect(payload.token, {
+      name: payload.room_name,
+      audio: true,
+      video: { width: 1280 },
+      dominantSpeaker: true,
+      networkQuality: { local: 1, remote: 1 },
+    });
+  } catch (err) {
+    await closeLiveWorkshopPanel();
+    throw err;
+  }
+  liveWorkshopRoom.participants.forEach((participant) => bindParticipantEvents(participant));
+  liveWorkshopRoom.on("participantConnected", (participant) => {
+    bindParticipantEvents(participant);
+    renderRoomParticipants();
+  });
+  liveWorkshopRoom.on("participantDisconnected", () => renderRoomParticipants());
+  liveWorkshopRoom.on("disconnected", () => {
+    liveWorkshopRoom = null;
+    renderRoomParticipants();
+    loadWorkshop();
+  });
+  renderRoomParticipants();
+  updateLiveControlLabels();
+  liveWorkshopRefreshTimer = window.setInterval(() => loadWorkshop(), 15000);
+}
+
+async function startWorkshopLive(workshop) {
+  try {
+    await connectToWorkshopRoom(workshop, `/api/workshops/${workshop.id}/start-room`);
+    showToast("Canlı yayın başlatıldı.", { type: "success" });
+    await loadWorkshop();
+  } catch (err) {
+    showToast(err.message || "Canlı yayın başlatılamadı.", { type: "error" });
+  }
+}
+
+async function joinWorkshopLive(workshop) {
+  try {
+    await connectToWorkshopRoom(workshop, `/api/workshops/${workshop.id}/join-token`);
+    showToast("Canlı odaya katıldın.", { type: "success" });
+  } catch (err) {
+    showToast(err.message || "Canlı odaya katılamadın.", { type: "error" });
+  }
+}
+
+async function endWorkshopLive(workshop) {
+  try {
+    await fetchJSON(`/api/workshops/${workshop.id}/end-room`, { method: "POST" });
+    await closeLiveWorkshopPanel();
+    showToast("Canlı yayın kapatıldı.", { type: "success" });
+    await loadWorkshop();
+  } catch (err) {
+    showToast(err.message || "Yayın kapatılamadı.", { type: "error" });
+  }
+}
+
+function setupLiveWorkshopUI() {
+  const closeBtn = document.getElementById("live-workshop-close");
+  const overlay = document.getElementById("live-workshop-overlay");
+  const leaveBtn = document.getElementById("live-leave-session");
+  const endBtn = document.getElementById("live-end-session");
+  const audioBtn = document.getElementById("live-toggle-audio");
+  const videoBtn = document.getElementById("live-toggle-video");
+  const screenBtn = document.getElementById("live-toggle-screen");
+  closeBtn?.addEventListener("click", () => closeLiveWorkshopPanel());
+  overlay?.addEventListener("click", () => closeLiveWorkshopPanel());
+  leaveBtn?.addEventListener("click", () => closeLiveWorkshopPanel());
+  endBtn?.addEventListener("click", async () => {
+    const workshop = getLiveWorkshopHeroTarget();
+    if (!workshop) return;
+    await endWorkshopLive(workshop);
+  });
+  audioBtn?.addEventListener("click", () => {
+    const track = liveWorkshopRoom
+      ? Array.from(liveWorkshopRoom.localParticipant.audioTracks.values()).map((pub) => pub.track).find(Boolean)
+      : null;
+    if (!track) return;
+    if (track.isEnabled) track.disable();
+    else track.enable();
+    updateLiveControlLabels();
+  });
+  videoBtn?.addEventListener("click", () => {
+    const track = liveWorkshopRoom
+      ? Array.from(liveWorkshopRoom.localParticipant.videoTracks.values()).map((pub) => pub.track).find((item) => item !== liveWorkshopScreenTrack) || null
+      : null;
+    if (!track) return;
+    if (track.isEnabled) track.disable();
+    else track.enable();
+    updateLiveControlLabels();
+    renderRoomParticipants();
+  });
+  screenBtn?.addEventListener("click", async () => {
+    if (!liveWorkshopRoom || !isElevatedRole()) return;
+    try {
+      if (liveWorkshopScreenTrack) {
+        liveWorkshopRoom.localParticipant.unpublishTrack(liveWorkshopScreenTrack);
+        liveWorkshopScreenTrack.stop();
+        liveWorkshopScreenTrack = null;
+      } else {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const [screenMediaTrack] = stream.getVideoTracks();
+        if (!screenMediaTrack) return;
+        liveWorkshopScreenTrack = new window.Twilio.Video.LocalVideoTrack(screenMediaTrack);
+        liveWorkshopRoom.localParticipant.publishTrack(liveWorkshopScreenTrack);
+        screenMediaTrack.addEventListener("ended", () => {
+          if (!liveWorkshopScreenTrack || !liveWorkshopRoom) return;
+          liveWorkshopRoom.localParticipant.unpublishTrack(liveWorkshopScreenTrack);
+          liveWorkshopScreenTrack.stop();
+          liveWorkshopScreenTrack = null;
+          updateLiveControlLabels();
+          renderRoomParticipants();
+        }, { once: true });
+      }
+      updateLiveControlLabels();
+      renderRoomParticipants();
+    } catch (err) {
+      showToast("Ekran paylaşımı başlatılamadı.", { type: "error" });
+    }
+  });
 }
 
 async function loadRules() {
@@ -1460,8 +1693,21 @@ async function loadWorkshop() {
   const container = document.getElementById("next-workshop");
   if (!container) return;
   container.innerHTML = "";
-  const workshops = await fetchJSON("/api/workshops");
-  const list = Array.isArray(workshops) ? workshops : [];
+  let list = [];
+  try {
+    const workshops = await fetchJSON("/api/workshops");
+    list = Array.isArray(workshops) ? workshops : [];
+  } catch (err) {
+    latestWorkshops = [];
+    renderLiveWorkshopHero();
+    container.innerHTML = '<p class="text-sm text-zinc-500">Workshoplar yüklenemedi.</p>';
+    const adminList = document.getElementById("workshop-admin-list");
+    if (adminList) adminList.innerHTML = "";
+    console.error("Workshop load failed", err);
+    return;
+  }
+  latestWorkshops = list;
+  renderLiveWorkshopHero();
   const adminList = document.getElementById("workshop-admin-list");
   if (adminList) adminList.innerHTML = "";
   if (!list.length) {
@@ -1469,6 +1715,7 @@ async function loadWorkshop() {
     if (adminList) {
       adminList.innerHTML = '<p class="text-sm text-zinc-500">Workshop bulunamadı.</p>';
     }
+    renderLiveWorkshopHero();
     return;
   }
 
@@ -1479,19 +1726,28 @@ async function loadWorkshop() {
       const dateVal = typeof workshop.date === "string" ? workshop.date.slice(0, 10) : "";
       const dateLocation = [dateVal, workshop.location || ""].filter(Boolean).join(" • ");
       const imageUrl = workshop.image_url || "../static/img/logo-transparent.png";
+      const liveStatus = workshop.live_status === "live"
+        ? '<span class="inline-flex items-center gap-2 rounded-sm border border-emerald-200 bg-white px-3 py-1 text-xs font-semibold text-emerald-700"><span class="h-2 w-2 rounded-full bg-emerald-500"></span>Workshop Başladı</span>'
+        : '<span class="inline-flex items-center gap-2 rounded-sm border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-zinc-500"><span class="h-2 w-2 rounded-full bg-zinc-300"></span>Workshop henüz başlamadı</span>';
       const card = document.createElement("div");
-      card.className = "rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm";
+      card.className = "rounded-sm border border-gray-200 bg-white overflow-hidden";
       card.innerHTML = `
         <div class="h-66 w-full bg-gray-100 overflow-hidden transition cursor-pointer relative group" data-action="signup">
           <img src="${imageUrl}" alt="${title}" class="w-full h-full object-cover">
           <button type="button" class="absolute inset-0 flex items-center justify-center opacity-0 transition group-hover:opacity-100">
-            <span class="rounded-lg py-3 px-5 bg-zinc-900 text-white text-sm font-semibold shadow-md">Kayıt ol</span>
+            <span class="rounded-sm py-3 px-5 bg-white border border-gray-200 text-zinc-700 text-sm font-semibold hover:bg-gray-100">Kayıt ol</span>
           </button>
         </div>
-        <div class="p-3 space-y-1">
-          <p class="font-semibold">${title}</p>
+        <div class="p-3 space-y-3">
+          <div class="flex items-start justify-between gap-2">
+            <p class="font-semibold">${title}</p>
+            ${liveStatus}
+          </div>
           <p class="text-zinc-600">${dateLocation || "Tarih paylaşılacak"}</p>
           <p class="text-sm text-zinc-500">${workshop.instructor || ""}</p>
+          <div class="flex flex-wrap items-center gap-2 pt-1">
+            ${createWorkshopLiveActions(workshop)}
+          </div>
         </div>
       `;
       container.appendChild(card);
@@ -1499,28 +1755,43 @@ async function loadWorkshop() {
       if (signupArea) {
         signupArea.addEventListener("click", () => openWorkshopSignup(workshop));
       }
+      card.querySelector('[data-live-action="start"]')?.addEventListener("click", () => startWorkshopLive(workshop));
+      card.querySelector('[data-live-action="join"]')?.addEventListener("click", () => joinWorkshopLive(workshop));
+      card.querySelector('[data-live-action="end"]')?.addEventListener("click", () => endWorkshopLive(workshop));
       if (adminList && isElevatedRole()) {
         const row = document.createElement("div");
-        row.className = "flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm";
+        row.className = "flex items-center justify-between rounded-sm border border-gray-200 bg-white px-3 py-2 text-sm";
         row.innerHTML = `
           <div>
             <p class="font-semibold">${title}</p>
             <p class="text-xs text-zinc-500">${dateLocation || "-"}</p>
+            <p class="text-[11px] text-zinc-400">${workshop.live_status === "live" ? "Canlı yayın açık" : "Canlı yayın kapalı"}</p>
           </div>
           <div class="flex items-center gap-2">
-            <button type="button" class="px-3 py-1 rounded-lg bg-zinc-900 text-xs font-semibold text-white" data-action="live">Yayın Oluştur</button>
-            <button type="button" class="px-3 py-1 rounded-lg border border-gray-200 text-xs font-semibold text-zinc-600" data-action="edit">Düzenle</button>
-            <button type="button" class="px-3 py-1 rounded-lg border border-red-200 text-xs font-semibold text-red-600" data-action="delete">Sil</button>
+            ${workshop.live_status === "live"
+              ? '<button type="button" class="rounded-sm px-3 py-1 border border-gray-200 bg-white text-xs font-semibold text-zinc-700 hover:bg-gray-100" data-action="join-live">Katıl</button><button type="button" class="rounded-sm px-3 py-1 border border-red-200 bg-white text-xs font-semibold text-red-600 hover:bg-red-600 hover:text-white" data-action="end-live">Bitir</button>'
+              : '<button type="button" class="rounded-sm px-3 py-1 border border-gray-200 bg-white text-xs font-semibold text-zinc-700 hover:bg-gray-100" data-action="start-live">Yayın Oluştur</button>'
+            }
+            <button type="button" class="rounded-sm px-3 py-1 border border-gray-200 bg-white text-xs font-semibold text-zinc-600 hover:bg-gray-100" data-action="edit">Düzenle</button>
+            <button type="button" class="rounded-sm px-3 py-1 border border-red-200 bg-white text-xs font-semibold text-red-600 hover:bg-red-600 hover:text-white" data-action="delete">Sil</button>
           </div>
         `;
-        const liveBtn = row.querySelector('[data-action="live"]');
         const editBtn = row.querySelector('[data-action="edit"]');
         const deleteBtn = row.querySelector('[data-action="delete"]');
-        if (liveBtn) {
-          liveBtn.addEventListener("click", () => openWorkshopLiveDialog(workshop));
-        }
+        const startLiveBtn = row.querySelector('[data-action="start-live"]');
+        const joinLiveBtn = row.querySelector('[data-action="join-live"]');
+        const endLiveBtn = row.querySelector('[data-action="end-live"]');
         if (editBtn) {
           editBtn.addEventListener("click", () => setWorkshopFormEditing(workshop));
+        }
+        if (startLiveBtn) {
+          startLiveBtn.addEventListener("click", () => startWorkshopLive(workshop));
+        }
+        if (joinLiveBtn) {
+          joinLiveBtn.addEventListener("click", () => joinWorkshopLive(workshop));
+        }
+        if (endLiveBtn) {
+          endLiveBtn.addEventListener("click", () => endWorkshopLive(workshop));
         }
         if (deleteBtn) {
           attachDeletePopover(deleteBtn, {
@@ -1538,43 +1809,6 @@ async function loadWorkshop() {
         adminList.appendChild(row);
       }
     });
-}
-
-async function createWorkshopLiveAccess(workshop, rawPassword) {
-  const workshopId = workshop?.id;
-  if (!workshopId) return;
-  const password = String(rawPassword || "").trim();
-  if (!password) return;
-  if (password.length < 4) {
-    showToast("Şifre en az 4 karakter olmalıdır.", { type: "error" });
-    return;
-  }
-
-  try {
-    showToast("Canlı yayın hazırlanıyor...", { type: "info" });
-    await fetchJSON(`/api/workshops/${workshopId}/live-sessions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: workshop.title || "Workshop" }),
-    });
-    const share = await fetchJSON(`/api/workshops/${workshopId}/share-access`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
-    });
-    const broadcast = await fetchJSON(`/api/workshops/${workshopId}/broadcast`);
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(`Workshop linki: ${share.join_url}\nŞifre: ${password}`);
-      }
-    } catch (err) {
-      console.warn("Clipboard copy failed", err);
-    }
-    openWorkshopShareDialog(share.join_url, password, broadcast.stream_key || "-");
-    showToast("Yayın bağlantısı hazırlandı.", { type: "success" });
-  } catch (err) {
-    showToast(err.message || "Yayın hazırlanamadı.", { type: "error" });
-  }
 }
 
 async function loadFaqs() {
@@ -1655,24 +1889,8 @@ async function loadVideos() {
       const card = document.createElement("div");
       const title = video.title || "Video";
       const date = video.created_at ? new Date(video.created_at).toLocaleDateString("tr-TR") : "";
-      const status = video.status || "";
-      const isMux = video.video_provider === "mux";
-      const isReady = !isMux || !status || status === "ready";
-      const playbackMarkup = isMux
-        ? isReady
-          ? `<mux-player
-              playback-id="${escapeHTML(video.mux_playback_id || "")}"
-              stream-type="on-demand"
-              preload="metadata"
-              accent-color="#caa24a"
-              class="block w-full h-full"
-            ></mux-player>`
-          : `<div class="flex h-full w-full items-center justify-center p-4 text-center text-sm text-zinc-200">
-              Video isleniyor. Mux hazir oldugunda burada oynatilacak.
-            </div>`
-        : `<video controls preload="metadata" playsinline webkit-playsinline class="w-full h-full object-cover" src="${escapeHTML(video.video_url || "")}"></video>`;
+      const playbackMarkup = `<video controls preload="metadata" playsinline webkit-playsinline class="w-full h-full object-cover" src="${escapeHTML(video.video_url || "")}"></video>`;
       const meta = [];
-      if (status) meta.push(`Durum: ${status}`);
       if (video.resolution) meta.push(`Kalite: ${video.resolution}`);
       card.className = "rounded-lg border border-gray-200 bg-white p-4 space-y-3";
       const actions = isElevatedRole()

@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% block head %}
 <script defer src="{{ url_for('static', filename='js/app.js') }}"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@mux/mux-player"></script>
 {% endblock %}
 {% block content %}
 <div id="sidebar-overlay" class="fixed inset-0 bg-black/30 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-300 z-30"></div>
@@ -473,67 +472,46 @@
       </form>
     </div>
   </div>
-
-  <div id="workshop-live-overlay" class="fixed inset-0 bg-black/30 opacity-0 pointer-events-none transition-opacity duration-200 z-30"></div>
-  <div id="workshop-live-panel" class="fixed inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200 z-40">
-    <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-100 p-5 space-y-4">
-      <div class="flex items-center justify-between">
-        <h3 class="font-semibold">Canlı Yayın Şifresi</h3>
-        <button id="workshop-live-close" type="button" class="h-9 w-9 rounded-full border border-gray-200 bg-white text-zinc-700 hover:border-gray-300 flex items-center justify-center leading-none" aria-label="Kapat">
-          ×
+  <div id="live-workshop-overlay" class="fixed inset-0 hidden bg-black/30 opacity-0 pointer-events-none transition-opacity duration-200 z-40"></div>
+  <div id="live-workshop-panel" class="fixed inset-0 hidden items-center justify-center p-3 md:p-6 opacity-0 pointer-events-none transition-opacity duration-200 z-50">
+    <div class="w-full max-w-6xl rounded-sm border border-gray-200 bg-white overflow-hidden">
+      <div class="flex items-center justify-between gap-3 px-4 py-4 md:px-6 border-b border-gray-200 bg-white">
+        <div>
+          <p class="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Canlı Workshop</p>
+          <h3 id="live-workshop-title" class="text-lg md:text-xl font-semibold">Workshop yayını</h3>
+          <p id="live-workshop-subtitle" class="text-sm text-zinc-500">Bağlantı kuruluyor...</p>
+        </div>
+        <button id="live-workshop-close" type="button" class="h-10 w-10 rounded-sm border border-gray-200 bg-white text-zinc-700 hover:bg-gray-100 flex items-center justify-center leading-none" aria-label="Kapat">
+          ✕
         </button>
       </div>
-      <p class="text-sm text-zinc-600">Öğrencilere göndereceğiniz yayın şifresini girin.</p>
-      <form id="workshop-live-form" class="space-y-3">
-        <div class="relative">
-          <input id="workshop-live-password" name="workshop_live_password" type="password" minlength="4" placeholder="Yayın şifresi"
-                 class="w-full rounded-lg bg-white border border-gray-200 px-3 py-2 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400" required>
-          <button id="workshop-live-password-toggle" type="button" class="absolute inset-y-0 right-2 flex items-center justify-center px-2 text-zinc-500 hover:text-zinc-800" aria-label="Şifreyi göster">
-            <svg id="workshop-live-eye-open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"></path>
-              <circle cx="12" cy="12" r="3"></circle>
-            </svg>
-            <svg id="workshop-live-eye-closed" class="hidden h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="m3 3 18 18"></path>
-              <path d="M10.6 10.6a2 2 0 1 0 2.8 2.8"></path>
-              <path d="M9.4 5.1A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a17.2 17.2 0 0 1-4 4.9"></path>
-              <path d="M6.6 6.7C4 8.3 2 12 2 12s3.5 7 10 7a10.7 10.7 0 0 0 4-.8"></path>
-            </svg>
-          </button>
+      <div class="grid gap-4 p-4 md:grid-cols-[minmax(0,1fr)_20rem] md:p-6">
+        <div class="space-y-4">
+          <div id="live-workshop-stage" class="grid gap-3 md:grid-cols-2 auto-rows-[13rem] md:auto-rows-[15rem]"></div>
+          <div class="rounded-sm border border-gray-200 bg-white p-4 space-y-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <button id="live-toggle-audio" type="button" class="rounded-sm px-4 py-2 border border-gray-200 bg-white text-sm font-semibold text-zinc-700 hover:bg-gray-100">Mikrofonu Kapat</button>
+              <button id="live-toggle-video" type="button" class="rounded-sm px-4 py-2 border border-gray-200 bg-white text-sm font-semibold text-zinc-700 hover:bg-gray-100">Kamerayı Kapat</button>
+              <button id="live-toggle-screen" type="button" class="rounded-sm px-4 py-2 border border-gray-200 bg-white text-sm font-semibold text-zinc-700 hover:bg-gray-100 hidden">Ekran Paylaş</button>
+              <button id="live-end-session" type="button" class="rounded-sm px-4 py-2 border border-red-200 bg-white text-sm font-semibold text-red-600 hover:bg-red-600 hover:text-white hidden">Yayını Bitir</button>
+              <button id="live-leave-session" type="button" class="ml-auto rounded-sm px-4 py-2 border border-gray-200 bg-white text-sm font-semibold text-zinc-700 hover:bg-gray-100">Odadan Ayrıl</button>
+            </div>
+            <p id="live-room-status" class="text-sm text-zinc-500">Hazırlanıyor...</p>
+          </div>
         </div>
-        <div class="flex gap-3">
-          <button id="workshop-live-cancel" type="button" class="flex-1 py-2 rounded-lg border border-gray-200 text-sm font-semibold text-zinc-600">İptal</button>
-          <button type="submit" class="flex-1 py-2 rounded-lg bg-zinc-900 text-white text-sm font-semibold">Devam Et</button>
-        </div>
-      </form>
+        <aside class="rounded-sm border border-gray-200 bg-white p-4 space-y-4">
+          <div class="space-y-1">
+            <p class="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Katılımcılar</p>
+            <p id="live-participant-summary" class="text-sm text-zinc-500">Henüz kimse bağlanmadı.</p>
+          </div>
+          <div id="live-participant-list" class="space-y-2 max-h-[24rem] overflow-y-auto pr-1"></div>
+          <div class="rounded-sm border border-dashed border-gray-200 bg-gray-50 p-3">
+            <p class="text-xs text-zinc-500">Canlı yayın kapandığında katılımcılar otomatik olarak yayından atılır. Sadece Masterlar ve admin yayını bitirebilir.</p>
+          </div>
+        </aside>
+      </div>
     </div>
   </div>
-
-  <div id="workshop-share-overlay" class="fixed inset-0 bg-black/30 opacity-0 pointer-events-none transition-opacity duration-200 z-30"></div>
-  <div id="workshop-share-panel" class="fixed inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200 z-40">
-    <div class="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-gray-100 p-5 space-y-4">
-      <div class="flex items-center justify-between">
-        <h3 class="font-semibold">Yayın Hazır</h3>
-        <button id="workshop-share-close" type="button" class="h-9 w-9 rounded-full border border-gray-200 bg-white text-zinc-700 hover:border-gray-300 flex items-center justify-center leading-none" aria-label="Kapat">
-          ×
-        </button>
-      </div>
-      <div class="space-y-2">
-        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Workshop Linki</p>
-        <input id="workshop-share-link" readonly class="w-full cursor-copy rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-zinc-700" title="Kopyalamak için tıklayın">
-      </div>
-      <div class="space-y-2">
-        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Yayın Şifresi</p>
-        <input id="workshop-share-password" readonly class="w-full cursor-copy rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-zinc-700" title="Kopyalamak için tıklayın">
-      </div>
-      <div class="space-y-2">
-        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Yayın Anahtarı</p>
-        <input id="workshop-share-stream-key" readonly class="w-full cursor-copy rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-zinc-700" title="Kopyalamak için tıklayın">
-      </div>
-      <button id="workshop-share-ok" type="button" class="w-full py-2 rounded-lg bg-zinc-900 text-white text-sm font-semibold">Tamam</button>
-    </div>
-  </div>
-
   <section id="uzman-akisi" class="space-y-4 hidden md:max-w-5xl md:mx-auto">
     <div id="feed-main" class="p-4 md:p-6 space-y-4 md:max-w-3xl md:mx-auto">
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -616,6 +594,16 @@
     <div class="p-4 space-y-3">
       <div class="flex items-center gap-2">
         <h3 class="font-semibold">Sıradaki Workshoplar</h3>
+      </div>
+      <div class="rounded-sm border border-gray-200 bg-white p-4">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p class="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Canlı</p>
+            <h4 class="mt-1 text-lg font-semibold">Workshop Yayını</h4>
+            <p id="live-workshop-hero-status" class="mt-2 text-sm text-zinc-500">Henüz aktif yayın yok.</p>
+          </div>
+          <div id="live-workshop-hero-actions" class="flex flex-wrap items-center gap-2"></div>
+        </div>
       </div>
       <div id="next-workshop" class="grid gap-3 text-sm text-zinc-700"></div>
     </div>
@@ -858,6 +846,8 @@
   role="status"
   aria-live="polite"
 ></div>
+
+<script src="https://sdk.twilio.com/js/video/releases/2.29.0/twilio-video.min.js"></script>
 
 {% if clerk_key %}
   <script
