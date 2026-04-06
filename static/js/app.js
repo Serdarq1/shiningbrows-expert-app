@@ -1252,9 +1252,11 @@ function attachTrackToCard(track, card) {
   if (!media) return;
   media.innerHTML = "";
   const element = track.attach();
-  element.className = "h-full w-full object-cover";
+  const isScreenTrack = track.kind === "video" && String(track.name || "").toLowerCase() === "screen";
+  element.className = `h-full w-full ${isScreenTrack || liveViewerMode ? "object-contain bg-black" : "object-cover"}`;
   if (track.kind === "video") {
     element.setAttribute("playsinline", "true");
+    media.className = `participant-media h-full w-full ${isScreenTrack || liveViewerMode ? "bg-black" : "bg-gray-50"} flex items-center justify-center text-sm text-zinc-500`;
     media.appendChild(element);
   } else {
     media.className = "participant-media h-full w-full bg-gray-50 flex items-center justify-center text-sm text-zinc-600";
@@ -1448,15 +1450,20 @@ function applyLiveViewerMode() {
   const controls = document.getElementById("live-workshop-controls-page");
   const panel = document.getElementById("live-participants-panel");
   const shell = document.getElementById("live-workshop-shell");
+  const stage = document.getElementById("live-workshop-stage-page");
   const button = document.getElementById("live-fullscreen-toggle");
-  if (!root || !header || !controls || !panel || !shell || !button) return;
+  if (!root || !header || !controls || !panel || !shell || !stage || !button) return;
   header.classList.toggle("hidden", liveViewerMode);
   controls.classList.toggle("hidden", liveViewerMode);
   panel.classList.toggle("hidden", liveViewerMode || liveParticipantsCollapsed);
   shell.classList.toggle("p-0", liveViewerMode);
   shell.classList.toggle("p-4", !liveViewerMode);
   shell.classList.toggle("md:p-6", !liveViewerMode);
+  shell.classList.toggle("pb-28", !liveViewerMode);
+  stage.classList.toggle("min-h-screen", liveViewerMode);
+  stage.classList.toggle("min-h-[calc(100vh-14rem)]", !liveViewerMode);
   button.textContent = liveViewerMode || document.fullscreenElement ? "Tam Ekrandan Çık" : "Tam Ekran";
+  renderRoomParticipants();
 }
 
 async function closeLiveWorkshopPanel({ keepRoomState = false } = {}) {
@@ -1515,24 +1522,38 @@ async function connectToWorkshopRoom(workshop, endpoint) {
   }
   const payload = await fetchJSON(endpoint, { method: "POST" });
   openLiveWorkshopPanel(workshop, "Kamera ve mikrofon hazırlanıyor...");
+  let audioTrack = null;
+  let videoTrack = null;
   let localTracks = [];
   try {
-    const [audioTrack, videoTrack] = await Promise.all([
-      createLiveAudioTrack(),
-      window.Twilio.Video.createLocalVideoTrack({
+    try {
+      audioTrack = await createLiveAudioTrack();
+    } catch (audioErr) {
+      console.warn("Audio track creation failed", audioErr);
+    }
+    try {
+      videoTrack = await window.Twilio.Video.createLocalVideoTrack({
         width: 1280,
         facingMode: "user",
-      }),
-    ]);
+      });
+    } catch (videoErr) {
+      console.warn("Video track creation failed", videoErr);
+    }
     localTracks = [audioTrack, videoTrack].filter(Boolean);
+    if (!localTracks.length) {
+      throw new Error("Kamera veya mikrofon açılamadı.");
+    }
     liveWorkshopRoom = await window.Twilio.Video.connect(payload.token, {
       name: payload.room_name,
       tracks: localTracks,
       dominantSpeaker: true,
       networkQuality: { local: 1, remote: 1 },
     });
+    if (audioTrack && !liveWorkshopRoom.localParticipant.audioTracks.size) {
+      await liveWorkshopRoom.localParticipant.publishTrack(audioTrack);
+    }
   } catch (err) {
-    localTracks.forEach((track) => {
+    [audioTrack, videoTrack].filter(Boolean).forEach((track) => {
       try {
         track.stop();
       } catch (stopErr) {
