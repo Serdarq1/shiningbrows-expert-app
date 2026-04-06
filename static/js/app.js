@@ -1274,12 +1274,22 @@ function getParticipantDisplayName(identity) {
   if (!identity) return "Katılımcı";
   if (identity.startsWith("student:")) {
     const parts = identity.split(":");
-    if (parts[2]) return toTitleCase(parts[2].replace(/-/g, " "));
+    if (parts[2]) {
+      try {
+        return toTitleCase(decodeURIComponent(parts.slice(2).join(":")));
+      } catch (err) {
+        return toTitleCase(parts.slice(2).join(":").replace(/-/g, " "));
+      }
+    }
     if (parts[1]) return `Uzman ${parts[1]}`.trim();
     return "Katılımcı";
   }
   if (identity.startsWith("user:")) {
-    return toTitleCase(identity.split("user:")[1].replace(/-/g, " "));
+    try {
+      return toTitleCase(decodeURIComponent(identity.split("user:")[1]));
+    } catch (err) {
+      return toTitleCase(identity.split("user:")[1].replace(/-/g, " "));
+    }
   }
   return toTitleCase(identity);
 }
@@ -1344,7 +1354,7 @@ function updateLiveControlLabels() {
   }
   if (endBtn) endBtn.classList.toggle("hidden", !isElevatedRole());
   if (roomStatus) {
-    roomStatus.textContent = "Canlı workshop odasına bağlandın.";
+    roomStatus.textContent = "";
   }
 }
 
@@ -1361,7 +1371,7 @@ function syncLiveParticipantsPanel() {
     shell.classList.add("md:grid-cols-[minmax(0,1fr)_20rem]");
     shell.classList.remove("md:grid-cols-1");
   }
-  toggle.textContent = liveParticipantsCollapsed ? "Katılımcıları Aç" : "Katılımcılar";
+  toggle.textContent = liveParticipantsCollapsed ? "Katılımcıları Aç" : "Katılımcıları Kapat";
 }
 
 async function closeLiveWorkshopPanel({ keepRoomState = false } = {}) {

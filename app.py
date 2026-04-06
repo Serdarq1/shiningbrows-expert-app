@@ -9,7 +9,7 @@ from tempfile import NamedTemporaryFile
 import ssl
 import re
 import socket
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from http.cookiejar import CookieJar
@@ -1085,10 +1085,10 @@ def _get_current_identity(student: Dict[str, Any]) -> str:
         return "guest"
     student_id = student.get("id")
     name = (student.get("name") or student.get("full_name") or "guest").strip()
-    slug = _slugify(name)
+    encoded_name = quote(name, safe="")
     if student_id is not None:
-        return f"student:{student_id}:{slug}"
-    return f"user:{slug}"
+        return f"student:{student_id}:{encoded_name}"
+    return f"user:{encoded_name}"
 
 
 def _parse_identity(identity: str) -> Dict[str, Any]:
@@ -1099,11 +1099,11 @@ def _parse_identity(identity: str) -> Dict[str, Any]:
         if len(parts) >= 2 and parts[1].isdigit():
             parsed["student_id"] = int(parts[1])
             if len(parts) >= 3 and parts[2]:
-                parsed["participant_name"] = parts[2].replace("-", " ").strip()
+                parsed["participant_name"] = unquote(":".join(parts[2:])).strip()
             else:
                 parsed["participant_name"] = f"Student {parts[1]}"
     elif raw.startswith("user:"):
-        parsed["participant_name"] = raw.split("user:", 1)[1].replace("-", " ").strip() or raw
+        parsed["participant_name"] = unquote(raw.split("user:", 1)[1]).strip() or raw
     return parsed
 
 
