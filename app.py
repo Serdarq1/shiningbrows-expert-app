@@ -1084,20 +1084,24 @@ def _get_current_identity(student: Dict[str, Any]) -> str:
     if not student:
         return "guest"
     student_id = student.get("id")
-    if student_id is not None:
-        return f"student:{student_id}"
     name = (student.get("name") or student.get("full_name") or "guest").strip()
-    return f"user:{_slugify(name)}"
+    slug = _slugify(name)
+    if student_id is not None:
+        return f"student:{student_id}:{slug}"
+    return f"user:{slug}"
 
 
 def _parse_identity(identity: str) -> Dict[str, Any]:
     raw = (identity or "").strip()
     parsed: Dict[str, Any] = {"identity": raw, "student_id": None, "participant_name": raw}
     if raw.startswith("student:"):
-        student_id = raw.split("student:", 1)[1]
-        if student_id.isdigit():
-            parsed["student_id"] = int(student_id)
-            parsed["participant_name"] = f"Student {student_id}"
+        parts = raw.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            parsed["student_id"] = int(parts[1])
+            if len(parts) >= 3 and parts[2]:
+                parsed["participant_name"] = parts[2].replace("-", " ").strip()
+            else:
+                parsed["participant_name"] = f"Student {parts[1]}"
     elif raw.startswith("user:"):
         parsed["participant_name"] = raw.split("user:", 1)[1].replace("-", " ").strip() or raw
     return parsed

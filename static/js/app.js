@@ -7,6 +7,7 @@ const sections = [
   "uzman-akisi",
   "kampanyalar",
   "yaklasan-workshoplar",
+  "canli-workshop",
   "uzmanlar",
   "medya",
   "destek",
@@ -39,6 +40,8 @@ let liveWorkshopRoom = null;
 let liveWorkshopScreenTrack = null;
 let liveWorkshopRefreshTimer = null;
 let latestWorkshops = [];
+let liveWorkshopCurrent = null;
+let liveParticipantsCollapsed = false;
 
 document.addEventListener("DOMContentLoaded", () => {
   const searchParams = new URLSearchParams(window.location.search);
@@ -513,7 +516,7 @@ function buildExpertStatusOptions(selectedStatus) {
   const options = [
     { value: "shining expert", label: "Shining Expert" },
     { value: "master assistant", label: "Master Assistant" },
-    { value: "master trainer", label: "Master Trainer" },
+    { value: "master trainer", label: "Founder" },
   ];
   return options
     .map((option) => `<option value="${option.value}"${option.value === normalized ? " selected" : ""}>${option.label}</option>`)
@@ -1258,10 +1261,22 @@ function attachTrackToCard(track, card) {
   }
 }
 
+function getPrimaryVideoTrack(participant) {
+  const tracks = Array.from(participant.tracks.values())
+    .map((publication) => publication.track)
+    .filter(Boolean);
+  const screenTrack = tracks.find((track) => track.kind === "video" && String(track.name || "").toLowerCase() === "screen");
+  if (screenTrack) return screenTrack;
+  return tracks.find((track) => track.kind === "video") || tracks[0] || null;
+}
+
 function getParticipantDisplayName(identity) {
   if (!identity) return "Katılımcı";
   if (identity.startsWith("student:")) {
-    return `Uzman ${identity.split("student:")[1] || ""}`.trim();
+    const parts = identity.split(":");
+    if (parts[2]) return toTitleCase(parts[2].replace(/-/g, " "));
+    if (parts[1]) return `Uzman ${parts[1]}`.trim();
+    return "Katılımcı";
   }
   if (identity.startsWith("user:")) {
     return toTitleCase(identity.split("user:")[1].replace(/-/g, " "));
@@ -1270,9 +1285,9 @@ function getParticipantDisplayName(identity) {
 }
 
 function renderRoomParticipants() {
-  const stage = document.getElementById("live-workshop-stage");
-  const list = document.getElementById("live-participant-list");
-  const summary = document.getElementById("live-participant-summary");
+  const stage = document.getElementById("live-workshop-stage-page");
+  const list = document.getElementById("live-participant-list-page");
+  const summary = document.getElementById("live-participant-summary-page");
   if (!stage || !list) return;
   stage.innerHTML = "";
   list.innerHTML = "";
@@ -1288,10 +1303,7 @@ function renderRoomParticipants() {
     const label = isLocal ? "Sen" : getParticipantDisplayName(identity);
     const card = createParticipantCard(identity, label);
     stage.appendChild(card);
-    const tracks = Array.from(participant.tracks.values())
-      .map((publication) => publication.track)
-      .filter(Boolean);
-    const preferredTrack = tracks.find((track) => track.kind === "video") || tracks[0];
+    const preferredTrack = getPrimaryVideoTrack(participant);
     if (preferredTrack) attachTrackToCard(preferredTrack, card);
     const row = document.createElement("div");
     row.className = "rounded-sm border border-gray-200 bg-white px-3 py-2";
@@ -1315,11 +1327,11 @@ function bindParticipantEvents(participant) {
 }
 
 function updateLiveControlLabels() {
-  const audioBtn = document.getElementById("live-toggle-audio");
-  const videoBtn = document.getElementById("live-toggle-video");
-  const screenBtn = document.getElementById("live-toggle-screen");
-  const endBtn = document.getElementById("live-end-session");
-  const roomStatus = document.getElementById("live-room-status");
+  const audioBtn = document.getElementById("live-toggle-audio-page");
+  const videoBtn = document.getElementById("live-toggle-video-page");
+  const screenBtn = document.getElementById("live-toggle-screen-page");
+  const endBtn = document.getElementById("live-end-session-page");
+  const roomStatus = document.getElementById("live-room-status-page");
   if (!liveWorkshopRoom) return;
   const localParticipant = liveWorkshopRoom.localParticipant;
   const audioTrack = Array.from(localParticipant.audioTracks.values()).map((pub) => pub.track).find(Boolean);
@@ -1336,19 +1348,23 @@ function updateLiveControlLabels() {
   }
 }
 
+function syncLiveParticipantsPanel() {
+  const panel = document.getElementById("live-participants-panel");
+  const shell = document.getElementById("live-workshop-shell");
+  const toggle = document.getElementById("live-participants-toggle");
+  if (!panel || !shell || !toggle) return;
+  panel.classList.toggle("hidden", liveParticipantsCollapsed);
+  if (liveParticipantsCollapsed) {
+    shell.classList.remove("md:grid-cols-[minmax(0,1fr)_20rem]");
+    shell.classList.add("md:grid-cols-1");
+  } else {
+    shell.classList.add("md:grid-cols-[minmax(0,1fr)_20rem]");
+    shell.classList.remove("md:grid-cols-1");
+  }
+  toggle.textContent = liveParticipantsCollapsed ? "Katılımcıları Aç" : "Katılımcılar";
+}
+
 async function closeLiveWorkshopPanel({ keepRoomState = false } = {}) {
-  const overlay = document.getElementById("live-workshop-overlay");
-  const panel = document.getElementById("live-workshop-panel");
-  if (overlay) {
-    overlay.classList.add("pointer-events-none", "opacity-0");
-    overlay.classList.remove("opacity-100");
-    overlay.classList.add("hidden");
-  }
-  if (panel) {
-    panel.classList.add("pointer-events-none", "opacity-0");
-    panel.classList.remove("opacity-100");
-    panel.classList.add("hidden");
-  }
   if (liveWorkshopRefreshTimer) {
     window.clearInterval(liveWorkshopRefreshTimer);
     liveWorkshopRefreshTimer = null;
@@ -1361,30 +1377,24 @@ async function closeLiveWorkshopPanel({ keepRoomState = false } = {}) {
     liveWorkshopScreenTrack.stop();
     liveWorkshopScreenTrack = null;
   }
+  liveWorkshopCurrent = null;
   renderRoomParticipants();
+  goToSection("yaklasan-workshoplar", { replace: true });
 }
 
 function openLiveWorkshopPanel(workshop, subtitle = "") {
-  const overlay = document.getElementById("live-workshop-overlay");
-  const panel = document.getElementById("live-workshop-panel");
-  const title = document.getElementById("live-workshop-title");
-  const subtitleEl = document.getElementById("live-workshop-subtitle");
+  const title = document.getElementById("live-workshop-title-page");
+  const subtitleEl = document.getElementById("live-workshop-subtitle-page");
+  liveWorkshopCurrent = workshop;
+  liveParticipantsCollapsed = false;
+  syncLiveParticipantsPanel();
   if (title) title.textContent = workshop?.title || "Workshop yayını";
   if (subtitleEl) subtitleEl.textContent = subtitle || [formatWorkshopDate(workshop?.date || ""), workshop?.location || ""].filter(Boolean).join(" • ");
-  if (overlay) {
-    overlay.classList.remove("hidden");
-    overlay.classList.remove("pointer-events-none", "opacity-0");
-    overlay.classList.add("opacity-100");
-  }
-  if (panel) {
-    panel.classList.remove("hidden");
-    panel.classList.remove("pointer-events-none", "opacity-0");
-    panel.classList.add("opacity-100");
-  }
+  goToSection("canli-workshop");
 }
 
 function setLiveWorkshopSubtitle(text = "") {
-  const subtitleEl = document.getElementById("live-workshop-subtitle");
+  const subtitleEl = document.getElementById("live-workshop-subtitle-page");
   if (!subtitleEl) return;
   subtitleEl.textContent = text || "";
 }
@@ -1418,6 +1428,9 @@ async function connectToWorkshopRoom(workshop, endpoint) {
     liveWorkshopRoom = null;
     renderRoomParticipants();
     loadWorkshop();
+    if (window.location.hash.replace("#", "") === "canli-workshop") {
+      goToSection("yaklasan-workshoplar", { replace: true });
+    }
   });
   renderRoomParticipants();
   setLiveWorkshopSubtitle([formatWorkshopDate(workshop?.date || ""), workshop?.location || ""].filter(Boolean).join(" • ") || "Canlı workshop");
@@ -1456,20 +1469,43 @@ async function endWorkshopLive(workshop) {
 }
 
 function setupLiveWorkshopUI() {
-  const closeBtn = document.getElementById("live-workshop-close");
-  const overlay = document.getElementById("live-workshop-overlay");
-  const leaveBtn = document.getElementById("live-leave-session");
-  const endBtn = document.getElementById("live-end-session");
-  const audioBtn = document.getElementById("live-toggle-audio");
-  const videoBtn = document.getElementById("live-toggle-video");
-  const screenBtn = document.getElementById("live-toggle-screen");
+  const closeBtn = document.getElementById("live-workshop-close-page");
+  const leaveBtn = document.getElementById("live-leave-session-page");
+  const endBtn = document.getElementById("live-end-session-page");
+  const audioBtn = document.getElementById("live-toggle-audio-page");
+  const videoBtn = document.getElementById("live-toggle-video-page");
+  const screenBtn = document.getElementById("live-toggle-screen-page");
+  const fullscreenBtn = document.getElementById("live-fullscreen-toggle");
+  const participantsBtn = document.getElementById("live-participants-toggle");
+  const liveRoot = document.getElementById("canli-workshop");
   closeBtn?.addEventListener("click", () => closeLiveWorkshopPanel());
-  overlay?.addEventListener("click", () => closeLiveWorkshopPanel());
   leaveBtn?.addEventListener("click", () => closeLiveWorkshopPanel());
   endBtn?.addEventListener("click", async () => {
-    const workshop = getLiveWorkshopHeroTarget();
+    const workshop = liveWorkshopCurrent || getLiveWorkshopHeroTarget();
     if (!workshop) return;
     await endWorkshopLive(workshop);
+  });
+  participantsBtn?.addEventListener("click", () => {
+    liveParticipantsCollapsed = !liveParticipantsCollapsed;
+    syncLiveParticipantsPanel();
+  });
+  fullscreenBtn?.addEventListener("click", async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await liveRoot?.requestFullscreen();
+        fullscreenBtn.textContent = "Tam Ekrandan Çık";
+      } else {
+        await document.exitFullscreen();
+        fullscreenBtn.textContent = "Tam Ekran";
+      }
+    } catch (err) {
+      showToast("Tam ekran açılamadı.", { type: "error" });
+    }
+  });
+  document.addEventListener("fullscreenchange", () => {
+    if (fullscreenBtn) {
+      fullscreenBtn.textContent = document.fullscreenElement ? "Tam Ekrandan Çık" : "Tam Ekran";
+    }
   });
   audioBtn?.addEventListener("click", () => {
     const track = liveWorkshopRoom
@@ -1505,8 +1541,8 @@ function setupLiveWorkshopUI() {
         const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
         const [screenMediaTrack] = stream.getVideoTracks();
         if (!screenMediaTrack) return;
-        liveWorkshopScreenTrack = new window.Twilio.Video.LocalVideoTrack(screenMediaTrack);
-        liveWorkshopRoom.localParticipant.publishTrack(liveWorkshopScreenTrack);
+        liveWorkshopScreenTrack = new window.Twilio.Video.LocalVideoTrack(screenMediaTrack, { name: "screen" });
+        await liveWorkshopRoom.localParticipant.publishTrack(liveWorkshopScreenTrack);
         screenMediaTrack.addEventListener("ended", () => {
           if (!liveWorkshopScreenTrack || !liveWorkshopRoom) return;
           liveWorkshopRoom.localParticipant.unpublishTrack(liveWorkshopScreenTrack);
