@@ -1348,6 +1348,20 @@ function stopLocalParticipantTracks(room) {
     });
 }
 
+async function ensureLiveAudioPublished() {
+  if (!liveWorkshopRoom) return null;
+  const currentTrack = Array.from(liveWorkshopRoom.localParticipant.audioTracks.values())
+    .map((publication) => publication.track)
+    .find(Boolean);
+  if (currentTrack) {
+    if (!currentTrack.isEnabled) currentTrack.enable();
+    return currentTrack;
+  }
+  const newTrack = await createLiveAudioTrack();
+  await liveWorkshopRoom.localParticipant.publishTrack(newTrack);
+  return newTrack;
+}
+
 function getFeaturedParticipantIdentity(participants) {
   const shared = participants.find((participant) => {
     const track = getPrimaryVideoTrack(participant);
@@ -1452,10 +1466,12 @@ function applyLiveViewerMode() {
   const shell = document.getElementById("live-workshop-shell");
   const stage = document.getElementById("live-workshop-stage-page");
   const button = document.getElementById("live-fullscreen-toggle");
+  const viewerBar = document.getElementById("live-viewer-exit-bar");
   if (!root || !header || !controls || !panel || !shell || !stage || !button) return;
   header.classList.toggle("hidden", liveViewerMode);
   controls.classList.toggle("hidden", liveViewerMode);
   panel.classList.toggle("hidden", liveViewerMode || liveParticipantsCollapsed);
+  if (viewerBar) viewerBar.classList.toggle("hidden", !liveViewerMode);
   shell.classList.toggle("p-0", liveViewerMode);
   shell.classList.toggle("p-4", !liveViewerMode);
   shell.classList.toggle("md:p-6", !liveViewerMode);
@@ -1549,9 +1565,7 @@ async function connectToWorkshopRoom(workshop, endpoint) {
       dominantSpeaker: true,
       networkQuality: { local: 1, remote: 1 },
     });
-    if (audioTrack && !liveWorkshopRoom.localParticipant.audioTracks.size) {
-      await liveWorkshopRoom.localParticipant.publishTrack(audioTrack);
-    }
+    await ensureLiveAudioPublished();
   } catch (err) {
     [audioTrack, videoTrack].filter(Boolean).forEach((track) => {
       try {
@@ -1627,8 +1641,22 @@ function setupLiveWorkshopUI() {
   const fullscreenBtn = document.getElementById("live-fullscreen-toggle");
   const participantsBtn = document.getElementById("live-participants-toggle");
   const liveRoot = document.getElementById("canli-workshop");
+  const viewerCloseBtn = document.getElementById("live-viewer-close");
+  const viewerFullscreenExitBtn = document.getElementById("live-viewer-fullscreen-exit");
   closeBtn?.addEventListener("click", () => closeLiveWorkshopPanel());
   leaveBtn?.addEventListener("click", () => closeLiveWorkshopPanel());
+  viewerCloseBtn?.addEventListener("click", () => closeLiveWorkshopPanel());
+  viewerFullscreenExitBtn?.addEventListener("click", async () => {
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch (err) {
+        console.warn("Fullscreen exit failed", err);
+      }
+    }
+    liveViewerMode = false;
+    applyLiveViewerMode();
+  });
   endBtn?.addEventListener("click", async () => {
     const workshop = liveWorkshopCurrent || getLiveWorkshopHeroTarget();
     if (!workshop) return;
@@ -1673,13 +1701,17 @@ function setupLiveWorkshopUI() {
     applyLiveViewerMode();
   });
   audioBtn?.addEventListener("click", () => {
-    const track = liveWorkshopRoom
-      ? Array.from(liveWorkshopRoom.localParticipant.audioTracks.values()).map((pub) => pub.track).find(Boolean)
-      : null;
-    if (!track) return;
-    if (track.isEnabled) track.disable();
-    else track.enable();
-    updateLiveControlLabels();
+    (async () => {
+      try {
+        const track = await ensureLiveAudioPublished();
+        if (!track) return;
+        if (track.isEnabled) track.disable();
+        else track.enable();
+        updateLiveControlLabels();
+      } catch (err) {
+        showToast("Mikrofon açılamadı.", { type: "error" });
+      }
+    })();
   });
   videoBtn?.addEventListener("click", () => {
     const track = liveWorkshopRoom

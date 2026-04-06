@@ -534,6 +534,14 @@
       </div>
       <div id="live-workshop-shell" class="grid flex-1 min-h-0 gap-4 p-3 pb-28 md:p-6 md:pb-6 md:grid-cols-[minmax(0,1fr)_20rem]">
         <div class="space-y-4 min-h-0 flex flex-col">
+          <div id="live-viewer-exit-bar" class="hidden fixed inset-x-3 top-3 z-20 justify-end gap-2">
+            <button id="live-viewer-close" type="button" class="rounded-sm px-4 py-2 border border-gray-200 bg-white text-sm font-semibold text-zinc-700 hover:bg-gray-100">
+              Çık
+            </button>
+            <button id="live-viewer-fullscreen-exit" type="button" class="rounded-sm px-4 py-2 border border-gray-200 bg-white text-sm font-semibold text-zinc-700 hover:bg-gray-100">
+              Tam Ekrandan Çık
+            </button>
+          </div>
           <div id="live-workshop-stage-page" class="grid flex-1 min-h-[calc(100vh-14rem)] md:min-h-[calc(100vh-15rem)] gap-3 md:grid-cols-2 auto-rows-[minmax(16rem,1fr)]"></div>
           <div id="live-workshop-controls-page" class="fixed inset-x-3 bottom-3 z-20 rounded-sm border border-gray-200 bg-white p-3 space-y-3 md:static md:inset-auto md:p-4">
             <div class="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
