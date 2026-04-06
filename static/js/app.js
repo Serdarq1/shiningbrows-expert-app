@@ -1249,6 +1249,7 @@ function createParticipantCard(identity, label) {
 
 function attachTrackToCard(track, card) {
   if (!track || !card) return;
+  track.detach().forEach((element) => element.remove());
   const element = track.attach();
   const isScreenTrack = track.kind === "video" && String(track.name || "").toLowerCase() === "screen";
   if (track.kind === "audio") {
@@ -1471,6 +1472,10 @@ function renderRoomParticipants() {
   const list = document.getElementById("live-participant-list-page");
   const summary = document.getElementById("live-participant-summary-page");
   if (!stage || !list) return;
+  if (liveWorkshopRoom) {
+    detachParticipantTracks(liveWorkshopRoom.localParticipant);
+    liveWorkshopRoom.participants.forEach((participant) => detachParticipantTracks(participant));
+  }
   stage.innerHTML = "";
   list.innerHTML = "";
   if (!liveWorkshopRoom) {
