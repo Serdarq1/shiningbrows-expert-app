@@ -1182,6 +1182,26 @@ function renderLiveWorkshopHero() {
   }
 }
 
+async function enrichWorkshopLiveStates(workshops) {
+  const items = Array.isArray(workshops) ? workshops.filter(Boolean) : [];
+  if (!items.length) return [];
+  const liveAware = await Promise.all(
+    items.map(async (workshop) => {
+      try {
+        const live = await fetchJSON(`/api/workshops/${workshop.id}/live`);
+        return { ...workshop, ...live };
+      } catch (err) {
+        return {
+          ...workshop,
+          live_status: "idle",
+          can_join: false,
+        };
+      }
+    })
+  );
+  return liveAware;
+}
+
 function createWorkshopLiveActions(workshop) {
   const isLive = workshop.live_status === "live";
   const buttons = [];
@@ -1312,7 +1332,7 @@ function updateLiveControlLabels() {
   }
   if (endBtn) endBtn.classList.toggle("hidden", !isElevatedRole());
   if (roomStatus) {
-    roomStatus.textContent = `${liveWorkshopRoom.name} odasına bağlısın. Ağ kalitesi ve medya durumu Twilio tarafından yönetiliyor.`;
+    roomStatus.textContent = "Canlı workshop odasına bağlandın.";
   }
 }
 
@@ -1363,6 +1383,12 @@ function openLiveWorkshopPanel(workshop, subtitle = "") {
   }
 }
 
+function setLiveWorkshopSubtitle(text = "") {
+  const subtitleEl = document.getElementById("live-workshop-subtitle");
+  if (!subtitleEl) return;
+  subtitleEl.textContent = text || "";
+}
+
 async function connectToWorkshopRoom(workshop, endpoint) {
   if (!window.Twilio?.Video) {
     showToast("Twilio Video SDK yüklenemedi.", { type: "error" });
@@ -1394,6 +1420,7 @@ async function connectToWorkshopRoom(workshop, endpoint) {
     loadWorkshop();
   });
   renderRoomParticipants();
+  setLiveWorkshopSubtitle([formatWorkshopDate(workshop?.date || ""), workshop?.location || ""].filter(Boolean).join(" • ") || "Canlı workshop");
   updateLiveControlLabels();
   liveWorkshopRefreshTimer = window.setInterval(() => loadWorkshop(), 15000);
 }
@@ -1466,6 +1493,10 @@ function setupLiveWorkshopUI() {
   screenBtn?.addEventListener("click", async () => {
     if (!liveWorkshopRoom || !isElevatedRole()) return;
     try {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getDisplayMedia) {
+        showToast("Ekran paylaşımı için güvenli bağlantı (HTTPS/ngrok) gerekli.", { type: "error" });
+        return;
+      }
       if (liveWorkshopScreenTrack) {
         liveWorkshopRoom.localParticipant.unpublishTrack(liveWorkshopScreenTrack);
         liveWorkshopScreenTrack.stop();
@@ -1488,7 +1519,10 @@ function setupLiveWorkshopUI() {
       updateLiveControlLabels();
       renderRoomParticipants();
     } catch (err) {
-      showToast("Ekran paylaşımı başlatılamadı.", { type: "error" });
+      const message = err?.name === "NotAllowedError"
+        ? "Ekran paylaşımı izni verilmedi."
+        : "Ekran paylaşımı başlatılamadı.";
+      showToast(message, { type: "error" });
     }
   });
 }
@@ -1696,7 +1730,7 @@ async function loadWorkshop() {
   let list = [];
   try {
     const workshops = await fetchJSON("/api/workshops");
-    list = Array.isArray(workshops) ? workshops : [];
+    list = await enrichWorkshopLiveStates(Array.isArray(workshops) ? workshops : []);
   } catch (err) {
     latestWorkshops = [];
     renderLiveWorkshopHero();

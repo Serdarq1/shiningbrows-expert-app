@@ -1325,6 +1325,39 @@ def workshop_live_state(workshop_id: int) -> Any:
     if not workshop:
         return jsonify({"error": "Workshop bulunamadı."}), 404
 
+    room_name = (workshop.get("live_room_name") or "").strip()
+    if room_name and (workshop.get("live_status") or "") == "live":
+        config_error = _validate_twilio_video_config()
+        if not config_error:
+            try:
+                client, _, _, _ = get_twilio_client()
+                room = client.video.rooms(room_name).fetch()
+                if getattr(room, "status", "") == "completed":
+                    now_iso = _utc_now_iso()
+                    workshop = _update_workshop_live_state(
+                        workshop_id,
+                        {
+                            "live_status": "ended",
+                            "live_ended_at": now_iso,
+                            "live_last_event": "room-ended",
+                            "live_last_event_at": now_iso,
+                        },
+                    ) or workshop
+            except TwilioRestException as exc:
+                if exc.status == 404:
+                    now_iso = _utc_now_iso()
+                    workshop = _update_workshop_live_state(
+                        workshop_id,
+                        {
+                            "live_status": "ended",
+                            "live_ended_at": now_iso,
+                            "live_last_event": "room-ended",
+                            "live_last_event_at": now_iso,
+                        },
+                    ) or workshop
+                else:
+                    print("Workshop live room verify failed:", exc)
+
     live_data = _serialize_live_workshop(workshop)
     live_data["can_start"] = student.get("role") in ELEVATED_ROLES
     return jsonify(live_data)
