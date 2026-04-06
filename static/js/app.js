@@ -1368,30 +1368,93 @@ async function createLiveAudioTrack() {
 function stopLocalParticipantTracks(room) {
   if (!room?.localParticipant?.tracks) return;
   Array.from(room.localParticipant.tracks.values())
-    .map((publication) => publication.track)
-    .filter(Boolean)
-    .forEach((track) => {
+    .forEach((publication) => {
+      const track = publication.track;
+      if (!track) return;
+      try {
+        room.localParticipant.unpublishTrack(track);
+      } catch (err) {
+        console.warn("Track unpublish failed", err);
+      }
       try {
         track.stop();
       } catch (err) {
         console.warn("Track stop failed", err);
       }
+      try {
+        if (track.mediaStreamTrack?.readyState !== "ended") {
+          track.mediaStreamTrack?.stop?.();
+        }
+      } catch (err) {
+        console.warn("MediaStreamTrack stop failed", err);
+      }
       track.detach().forEach((element) => element.remove());
     });
 }
 
+function getCurrentLiveAudioTrack() {
+  if (!liveWorkshopRoom?.localParticipant?.audioTracks) return null;
+  return Array.from(liveWorkshopRoom.localParticipant.audioTracks.values())
+    .map((publication) => publication.track)
+    .find(Boolean) || null;
+}
+
+function isLiveTrackUsable(track) {
+  if (!track) return false;
+  const mediaTrack = track.mediaStreamTrack;
+  if (!mediaTrack) return true;
+  return mediaTrack.readyState === "live";
+}
+
 async function ensureLiveAudioPublished() {
   if (!liveWorkshopRoom) return null;
-  const currentTrack = Array.from(liveWorkshopRoom.localParticipant.audioTracks.values())
-    .map((publication) => publication.track)
-    .find(Boolean);
-  if (currentTrack) {
+  const currentTrack = getCurrentLiveAudioTrack();
+  if (currentTrack && isLiveTrackUsable(currentTrack)) {
     if (!currentTrack.isEnabled) currentTrack.enable();
     return currentTrack;
+  }
+  if (currentTrack) {
+    try {
+      liveWorkshopRoom.localParticipant.unpublishTrack(currentTrack);
+    } catch (err) {
+      console.warn("Stale audio track unpublish failed", err);
+    }
+    try {
+      currentTrack.stop();
+    } catch (err) {
+      console.warn("Stale audio track stop failed", err);
+    }
+    currentTrack.detach().forEach((element) => element.remove());
   }
   const newTrack = await createLiveAudioTrack();
   await liveWorkshopRoom.localParticipant.publishTrack(newTrack);
   return newTrack;
+}
+
+function teardownLiveWorkshopRoom(room) {
+  if (!room) return;
+  detachParticipantTracks(room.localParticipant);
+  room.participants.forEach((participant) => detachParticipantTracks(participant));
+  stopLocalParticipantTracks(room);
+  if (liveWorkshopScreenTrack) {
+    try {
+      room.localParticipant.unpublishTrack(liveWorkshopScreenTrack);
+    } catch (err) {
+      console.warn("Screen track unpublish failed", err);
+    }
+    try {
+      liveWorkshopScreenTrack.stop();
+    } catch (err) {
+      console.warn("Screen track stop failed", err);
+    }
+    try {
+      liveWorkshopScreenTrack.mediaStreamTrack?.stop?.();
+    } catch (err) {
+      console.warn("Screen MediaStreamTrack stop failed", err);
+    }
+    liveWorkshopScreenTrack = null;
+  }
+  room.disconnect();
 }
 
 function getFeaturedParticipantIdentity(participants) {
@@ -1528,10 +1591,7 @@ async function closeLiveWorkshopPanel({ keepRoomState = false } = {}) {
     liveWorkshopRefreshTimer = null;
   }
   if (!keepRoomState && liveWorkshopRoom) {
-    detachParticipantTracks(liveWorkshopRoom.localParticipant);
-    liveWorkshopRoom.participants.forEach((participant) => detachParticipantTracks(participant));
-    stopLocalParticipantTracks(liveWorkshopRoom);
-    liveWorkshopRoom.disconnect();
+    teardownLiveWorkshopRoom(liveWorkshopRoom);
     liveWorkshopRoom = null;
   }
   if (liveWorkshopScreenTrack) {
@@ -1621,6 +1681,7 @@ async function connectToWorkshopRoom(workshop, endpoint) {
     window.setTimeout(() => renderRoomParticipants(), 0);
   });
   liveWorkshopRoom.on("disconnected", () => {
+    teardownLiveWorkshopRoom(liveWorkshopRoom);
     liveWorkshopRoom = null;
     renderRoomParticipants();
     loadWorkshop();
@@ -1733,13 +1794,27 @@ function setupLiveWorkshopUI() {
     if (!document.fullscreenElement && liveViewerMode) return;
     applyLiveViewerMode();
   });
+  const releaseLiveMedia = () => {
+    if (!liveWorkshopRoom) return;
+    teardownLiveWorkshopRoom(liveWorkshopRoom);
+    liveWorkshopRoom = null;
+    liveWorkshopCurrent = null;
+    liveViewerMode = false;
+  };
+  window.addEventListener("pagehide", releaseLiveMedia);
+  window.addEventListener("beforeunload", releaseLiveMedia);
   audioBtn?.addEventListener("click", () => {
     (async () => {
       try {
-        const track = await ensureLiveAudioPublished();
+        let track = getCurrentLiveAudioTrack();
+        if (track?.isEnabled && isLiveTrackUsable(track)) {
+          track.disable();
+          updateLiveControlLabels();
+          return;
+        }
+        track = await ensureLiveAudioPublished();
         if (!track) return;
-        if (track.isEnabled) track.disable();
-        else track.enable();
+        track.enable();
         updateLiveControlLabels();
       } catch (err) {
         showToast("Mikrofon açılamadı.", { type: "error" });
