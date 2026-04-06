@@ -1294,6 +1294,16 @@ function getParticipantDisplayName(identity) {
   return toTitleCase(identity);
 }
 
+function detachParticipantTracks(participant) {
+  if (!participant?.tracks) return;
+  Array.from(participant.tracks.values())
+    .map((publication) => publication.track)
+    .filter(Boolean)
+    .forEach((track) => {
+      track.detach().forEach((element) => element.remove());
+    });
+}
+
 function renderRoomParticipants() {
   const stage = document.getElementById("live-workshop-stage-page");
   const list = document.getElementById("live-participant-list-page");
@@ -1306,7 +1316,10 @@ function renderRoomParticipants() {
     if (summary) summary.textContent = "Henüz kimse bağlanmadı.";
     return;
   }
-  const participants = [liveWorkshopRoom.localParticipant, ...Array.from(liveWorkshopRoom.participants.values())];
+  const participants = [
+    liveWorkshopRoom.localParticipant,
+    ...Array.from(liveWorkshopRoom.participants.values()).filter((participant) => participant.state !== "disconnected"),
+  ];
   participants.forEach((participant, index) => {
     const identity = participant.identity || `participant-${index}`;
     const isLocal = participant === liveWorkshopRoom.localParticipant;
@@ -1375,11 +1388,20 @@ function syncLiveParticipantsPanel() {
 }
 
 async function closeLiveWorkshopPanel({ keepRoomState = false } = {}) {
+  if (document.fullscreenElement) {
+    try {
+      await document.exitFullscreen();
+    } catch (err) {
+      console.warn("Fullscreen exit failed", err);
+    }
+  }
   if (liveWorkshopRefreshTimer) {
     window.clearInterval(liveWorkshopRefreshTimer);
     liveWorkshopRefreshTimer = null;
   }
   if (!keepRoomState && liveWorkshopRoom) {
+    detachParticipantTracks(liveWorkshopRoom.localParticipant);
+    liveWorkshopRoom.participants.forEach((participant) => detachParticipantTracks(participant));
     liveWorkshopRoom.disconnect();
     liveWorkshopRoom = null;
   }
@@ -1433,7 +1455,11 @@ async function connectToWorkshopRoom(workshop, endpoint) {
     bindParticipantEvents(participant);
     renderRoomParticipants();
   });
-  liveWorkshopRoom.on("participantDisconnected", () => renderRoomParticipants());
+  liveWorkshopRoom.on("participantDisconnected", (participant) => {
+    detachParticipantTracks(participant);
+    renderRoomParticipants();
+    window.setTimeout(() => renderRoomParticipants(), 0);
+  });
   liveWorkshopRoom.on("disconnected", () => {
     liveWorkshopRoom = null;
     renderRoomParticipants();
