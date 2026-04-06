@@ -38,6 +38,7 @@ TWILIO_AUTH_TOKEN=...
 TWILIO_VIDEO_STATUS_CALLBACK_URL=https://your-domain.com/webhooks/twilio/video
 TWILIO_VIDEO_TOKEN_TTL=3600
 TWILIO_VALIDATE_WEBHOOK_SIGNATURE=false
+TWILIO_KRISP_ASSETS_PATH=https://experts.shiningbrowsacademy.com/static/twilio/krisp
 ```
 4) Çalıştırın:
 ```
@@ -202,6 +203,11 @@ on workshop_live_attendance(workshop_id, room_sid, participant_identity);
 - `POST /api/workshops/<id>/join-token`: logged-in user receives a Twilio token for the active workshop room.
 - `POST /api/workshops/<id>/end-room`: admin/master ends the active room.
 - `POST /webhooks/twilio/video`: Twilio status callback endpoint for room lifecycle and attendance.
+
+### Krisp noise cancellation
+- Set `TWILIO_KRISP_ASSETS_PATH` to the public URL where you host Twilio Krisp SDK assets.
+- The app will try Krisp first when that path is configured and fall back to browser `noiseSuppression` if Krisp assets are missing or fail to load.
+- You still need to host the vendor assets yourself in production; wiring the env var alone is not enough.
 
 ### Storage
 - Storage bucket adı: `student-photos`

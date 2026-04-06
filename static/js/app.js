@@ -42,6 +42,8 @@ let liveWorkshopRefreshTimer = null;
 let latestWorkshops = [];
 let liveWorkshopCurrent = null;
 let liveParticipantsCollapsed = false;
+let liveViewerMode = false;
+const twilioKrispAssetsPath = window.SHINING_BROWS_CONFIG?.twilioKrispAssetsPath || "";
 
 document.addEventListener("DOMContentLoaded", () => {
   const searchParams = new URLSearchParams(window.location.search);
@@ -1304,6 +1306,55 @@ function detachParticipantTracks(participant) {
     });
 }
 
+async function createLiveAudioTrack() {
+  const baseOptions = {
+    echoCancellation: true,
+    autoGainControl: true,
+  };
+  if (twilioKrispAssetsPath) {
+    try {
+      return await window.Twilio.Video.createLocalAudioTrack({
+        ...baseOptions,
+        noiseSuppression: false,
+        noiseCancellationOptions: {
+          sdkAssetsPath: twilioKrispAssetsPath,
+          vendor: "krisp",
+        },
+      });
+    } catch (err) {
+      console.warn("Krisp audio track creation failed, falling back to browser suppression", err);
+    }
+  }
+  return window.Twilio.Video.createLocalAudioTrack({
+    ...baseOptions,
+    noiseSuppression: true,
+  });
+}
+
+function stopLocalParticipantTracks(room) {
+  if (!room?.localParticipant?.tracks) return;
+  Array.from(room.localParticipant.tracks.values())
+    .map((publication) => publication.track)
+    .filter(Boolean)
+    .forEach((track) => {
+      try {
+        track.stop();
+      } catch (err) {
+        console.warn("Track stop failed", err);
+      }
+      track.detach().forEach((element) => element.remove());
+    });
+}
+
+function getFeaturedParticipantIdentity(participants) {
+  const shared = participants.find((participant) => {
+    const track = getPrimaryVideoTrack(participant);
+    return track?.kind === "video" && String(track.name || "").toLowerCase() === "screen";
+  });
+  const fallback = shared || participants[0] || null;
+  return fallback?.identity || null;
+}
+
 function renderRoomParticipants() {
   const stage = document.getElementById("live-workshop-stage-page");
   const list = document.getElementById("live-participant-list-page");
@@ -1320,7 +1371,11 @@ function renderRoomParticipants() {
     liveWorkshopRoom.localParticipant,
     ...Array.from(liveWorkshopRoom.participants.values()).filter((participant) => participant.state !== "disconnected"),
   ];
+  const featuredIdentity = getFeaturedParticipantIdentity(participants);
   participants.forEach((participant, index) => {
+    if (liveViewerMode && featuredIdentity && participant.identity !== featuredIdentity) {
+      return;
+    }
     const identity = participant.identity || `participant-${index}`;
     const isLocal = participant === liveWorkshopRoom.localParticipant;
     const label = isLocal ? "Sen" : getParticipantDisplayName(identity);
@@ -1387,6 +1442,23 @@ function syncLiveParticipantsPanel() {
   toggle.textContent = liveParticipantsCollapsed ? "Katılımcıları Aç" : "Katılımcıları Kapat";
 }
 
+function applyLiveViewerMode() {
+  const root = document.getElementById("canli-workshop");
+  const header = document.getElementById("live-workshop-header-page");
+  const controls = document.getElementById("live-workshop-controls-page");
+  const panel = document.getElementById("live-participants-panel");
+  const shell = document.getElementById("live-workshop-shell");
+  const button = document.getElementById("live-fullscreen-toggle");
+  if (!root || !header || !controls || !panel || !shell || !button) return;
+  header.classList.toggle("hidden", liveViewerMode);
+  controls.classList.toggle("hidden", liveViewerMode);
+  panel.classList.toggle("hidden", liveViewerMode || liveParticipantsCollapsed);
+  shell.classList.toggle("p-0", liveViewerMode);
+  shell.classList.toggle("p-4", !liveViewerMode);
+  shell.classList.toggle("md:p-6", !liveViewerMode);
+  button.textContent = liveViewerMode || document.fullscreenElement ? "Tam Ekrandan Çık" : "Tam Ekran";
+}
+
 async function closeLiveWorkshopPanel({ keepRoomState = false } = {}) {
   if (document.fullscreenElement) {
     try {
@@ -1402,6 +1474,7 @@ async function closeLiveWorkshopPanel({ keepRoomState = false } = {}) {
   if (!keepRoomState && liveWorkshopRoom) {
     detachParticipantTracks(liveWorkshopRoom.localParticipant);
     liveWorkshopRoom.participants.forEach((participant) => detachParticipantTracks(participant));
+    stopLocalParticipantTracks(liveWorkshopRoom);
     liveWorkshopRoom.disconnect();
     liveWorkshopRoom = null;
   }
@@ -1410,7 +1483,9 @@ async function closeLiveWorkshopPanel({ keepRoomState = false } = {}) {
     liveWorkshopScreenTrack = null;
   }
   liveWorkshopCurrent = null;
+  liveViewerMode = false;
   renderRoomParticipants();
+  applyLiveViewerMode();
   goToSection("yaklasan-workshoplar", { replace: true });
 }
 
@@ -1419,7 +1494,9 @@ function openLiveWorkshopPanel(workshop, subtitle = "") {
   const subtitleEl = document.getElementById("live-workshop-subtitle-page");
   liveWorkshopCurrent = workshop;
   liveParticipantsCollapsed = false;
+  liveViewerMode = false;
   syncLiveParticipantsPanel();
+  applyLiveViewerMode();
   if (title) title.textContent = workshop?.title || "Workshop yayını";
   if (subtitleEl) subtitleEl.textContent = subtitle || [formatWorkshopDate(workshop?.date || ""), workshop?.location || ""].filter(Boolean).join(" • ");
   goToSection("canli-workshop");
@@ -1438,15 +1515,30 @@ async function connectToWorkshopRoom(workshop, endpoint) {
   }
   const payload = await fetchJSON(endpoint, { method: "POST" });
   openLiveWorkshopPanel(workshop, "Kamera ve mikrofon hazırlanıyor...");
+  let localTracks = [];
   try {
+    const [audioTrack, videoTrack] = await Promise.all([
+      createLiveAudioTrack(),
+      window.Twilio.Video.createLocalVideoTrack({
+        width: 1280,
+        facingMode: "user",
+      }),
+    ]);
+    localTracks = [audioTrack, videoTrack].filter(Boolean);
     liveWorkshopRoom = await window.Twilio.Video.connect(payload.token, {
       name: payload.room_name,
-      audio: true,
-      video: { width: 1280 },
+      tracks: localTracks,
       dominantSpeaker: true,
       networkQuality: { local: 1, remote: 1 },
     });
   } catch (err) {
+    localTracks.forEach((track) => {
+      try {
+        track.stop();
+      } catch (stopErr) {
+        console.warn("Local track stop failed", stopErr);
+      }
+    });
     await closeLiveWorkshopPanel();
     throw err;
   }
@@ -1524,24 +1616,40 @@ function setupLiveWorkshopUI() {
   participantsBtn?.addEventListener("click", () => {
     liveParticipantsCollapsed = !liveParticipantsCollapsed;
     syncLiveParticipantsPanel();
+    applyLiveViewerMode();
   });
   fullscreenBtn?.addEventListener("click", async () => {
     try {
-      if (!document.fullscreenElement) {
-        await liveRoot?.requestFullscreen();
-        fullscreenBtn.textContent = "Tam Ekrandan Çık";
-      } else {
+      if (!document.fullscreenElement && !liveViewerMode) {
+        if (liveRoot?.requestFullscreen) {
+          await liveRoot.requestFullscreen();
+        } else {
+          liveViewerMode = true;
+          applyLiveViewerMode();
+        }
+      } else if (document.fullscreenElement) {
         await document.exitFullscreen();
-        fullscreenBtn.textContent = "Tam Ekran";
+      } else {
+        liveViewerMode = false;
+        applyLiveViewerMode();
+      }
+      if (!document.fullscreenElement && !liveViewerMode && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || "")) {
+        liveViewerMode = true;
+        applyLiveViewerMode();
       }
     } catch (err) {
-      showToast("Tam ekran açılamadı.", { type: "error" });
+      liveViewerMode = !liveViewerMode;
+      applyLiveViewerMode();
+      if (!liveViewerMode) {
+        showToast("Tam ekran açılamadı.", { type: "error" });
+      } else {
+        showToast("Tam ekran görünümü açıldı.", { type: "success" });
+      }
     }
   });
   document.addEventListener("fullscreenchange", () => {
-    if (fullscreenBtn) {
-      fullscreenBtn.textContent = document.fullscreenElement ? "Tam Ekrandan Çık" : "Tam Ekran";
-    }
+    if (!document.fullscreenElement && liveViewerMode) return;
+    applyLiveViewerMode();
   });
   audioBtn?.addEventListener("click", () => {
     const track = liveWorkshopRoom

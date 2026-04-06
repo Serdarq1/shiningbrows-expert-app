@@ -97,6 +97,7 @@ CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY", "")
 CLERK_ISSUER = os.getenv("CLERK_ISSUER", "")
 CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE", "")
 CLERK_API_VERSION = os.getenv("CLERK_API_VERSION", "")
+TWILIO_KRISP_ASSETS_PATH = os.getenv("TWILIO_KRISP_ASSETS_PATH", "").strip()
 
 supabase: Optional[Client] = None
 supabase_key = SUPABASE_SERVICE_KEY or SUPABASE_KEY
@@ -658,6 +659,7 @@ def dashboard() -> Any:
         "dashboard.html",
         clerk_key=CLERK_PUBLISHABLE_KEY,
         clerk_issuer=CLERK_ISSUER,
+        twilio_krisp_assets_path=TWILIO_KRISP_ASSETS_PATH,
     )
 
 
