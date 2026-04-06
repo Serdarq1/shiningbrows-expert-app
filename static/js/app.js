@@ -1242,17 +1242,43 @@ function createParticipantCard(identity, label) {
   card.innerHTML = `
     <div class="absolute left-3 top-3 z-10 rounded-sm border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-zinc-700">${escapeHTML(label)}</div>
     <div class="participant-media h-full w-full bg-gray-50 flex items-center justify-center text-sm text-zinc-500">Bağlantı bekleniyor...</div>
+    <div class="participant-audio"></div>
   `;
   return card;
 }
 
 function attachTrackToCard(track, card) {
   if (!track || !card) return;
+  const element = track.attach();
+  const isScreenTrack = track.kind === "video" && String(track.name || "").toLowerCase() === "screen";
+  if (track.kind === "audio") {
+    const audioHost = card.querySelector(".participant-audio");
+    const media = card.querySelector(".participant-media");
+    if (!audioHost || !media) return;
+    Array.from(audioHost.children).forEach((child) => child.remove());
+    element.autoplay = true;
+    element.playsInline = true;
+    if (card.dataset.identity === liveWorkshopRoom?.localParticipant?.identity) {
+      element.muted = true;
+      return;
+    }
+    audioHost.appendChild(element);
+    if (!card.querySelector("[data-audio-badge='true']")) {
+      const badge = document.createElement("div");
+      badge.dataset.audioBadge = "true";
+      badge.className = "absolute right-3 bottom-3 z-10 rounded-sm border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-zinc-700";
+      badge.textContent = "Ses açık";
+      card.appendChild(badge);
+    }
+    if (!media.querySelector("video")) {
+      media.className = "participant-media h-full w-full bg-gray-50 flex items-center justify-center text-sm text-zinc-600";
+      media.innerHTML = `<div class="rounded-sm border border-gray-200 bg-white px-4 py-2">Ses bağlı</div>`;
+    }
+    return;
+  }
   const media = card.querySelector(".participant-media");
   if (!media) return;
   media.innerHTML = "";
-  const element = track.attach();
-  const isScreenTrack = track.kind === "video" && String(track.name || "").toLowerCase() === "screen";
   element.className = `h-full w-full ${isScreenTrack || liveViewerMode ? "object-contain bg-black" : "object-cover"}`;
   if (track.kind === "video") {
     element.setAttribute("playsinline", "true");
@@ -1268,10 +1294,16 @@ function attachTrackToCard(track, card) {
 function getPrimaryVideoTrack(participant) {
   const tracks = Array.from(participant.tracks.values())
     .map((publication) => publication.track)
-    .filter(Boolean);
+    .filter((track) => track?.kind === "video");
   const screenTrack = tracks.find((track) => track.kind === "video" && String(track.name || "").toLowerCase() === "screen");
   if (screenTrack) return screenTrack;
-  return tracks.find((track) => track.kind === "video") || tracks[0] || null;
+  return tracks[0] || null;
+}
+
+function getParticipantAudioTracks(participant) {
+  return Array.from(participant.audioTracks?.values?.() || [])
+    .map((publication) => publication.track)
+    .filter(Boolean);
 }
 
 function getParticipantDisplayName(identity) {
@@ -1399,6 +1431,7 @@ function renderRoomParticipants() {
     stage.appendChild(card);
     const preferredTrack = getPrimaryVideoTrack(participant);
     if (preferredTrack) attachTrackToCard(preferredTrack, card);
+    getParticipantAudioTracks(participant).forEach((track) => attachTrackToCard(track, card));
     const row = document.createElement("div");
     row.className = "rounded-sm border border-gray-200 bg-white px-3 py-2";
     row.innerHTML = `
