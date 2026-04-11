@@ -1237,8 +1237,11 @@ function createWorkshopLiveActions(workshop) {
 }
 
 function createParticipantCard(identity, label) {
+  const immersiveLayout = shouldUseImmersiveLiveLayout();
   const card = document.createElement("div");
-  card.className = "rounded-sm border border-gray-200 bg-white overflow-hidden relative";
+  card.className = immersiveLayout
+    ? "overflow-hidden relative h-full w-full bg-black"
+    : "rounded-sm border border-gray-200 bg-white overflow-hidden relative";
   card.dataset.identity = identity;
   card.innerHTML = `
     <div class="mobile-live-hidden md:block absolute left-3 top-3 z-10 rounded-sm border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-zinc-700">${escapeHTML(label)}</div>
@@ -1252,6 +1255,17 @@ function isMobileLiveUI() {
   return window.matchMedia?.("(max-width: 768px)")?.matches || false;
 }
 
+function isMobileLandscapeLiveUI() {
+  const hasCoarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches || false;
+  const isLandscape = window.matchMedia?.("(orientation: landscape)")?.matches || false;
+  const shortViewport = window.matchMedia?.("(max-height: 560px)")?.matches || false;
+  return hasCoarsePointer && isLandscape && shortViewport;
+}
+
+function shouldUseImmersiveLiveLayout() {
+  return liveViewerMode || Boolean(document.fullscreenElement) || isMobileLandscapeLiveUI();
+}
+
 function attachTrackToCard(track, card) {
   if (!track || !card) return;
   const isLocalCard = card.dataset.identity === liveWorkshopRoom?.localParticipant?.identity;
@@ -1259,6 +1273,7 @@ function attachTrackToCard(track, card) {
   track.detach().forEach((element) => element.remove());
   const element = track.attach();
   const isScreenTrack = track.kind === "video" && String(track.name || "").toLowerCase() === "screen";
+  const immersiveLayout = shouldUseImmersiveLiveLayout();
   if (track.kind === "audio") {
     const audioHost = card.querySelector(".participant-audio");
     const media = card.querySelector(".participant-media");
@@ -1283,10 +1298,10 @@ function attachTrackToCard(track, card) {
   const media = card.querySelector(".participant-media");
   if (!media) return;
   media.innerHTML = "";
-  element.className = `h-full w-full ${isScreenTrack || liveViewerMode ? "object-contain bg-black" : "object-cover"}`;
+  element.className = `h-full w-full ${isScreenTrack ? "object-contain bg-black" : immersiveLayout ? "object-cover bg-black" : "object-cover"}`;
   if (track.kind === "video") {
     element.setAttribute("playsinline", "true");
-    media.className = `participant-media h-full w-full ${isScreenTrack || liveViewerMode ? "bg-black" : "bg-gray-50"} flex items-center justify-center text-sm text-zinc-500`;
+    media.className = `participant-media h-full w-full ${isScreenTrack || immersiveLayout ? "bg-black" : "bg-gray-50"} flex items-center justify-center text-sm text-zinc-500`;
     media.appendChild(element);
   } else {
     media.className = "participant-media h-full w-full bg-gray-50 flex items-center justify-center text-sm text-zinc-600";
@@ -1497,9 +1512,15 @@ function renderRoomParticipants() {
     liveWorkshopRoom.localParticipant,
     ...Array.from(liveWorkshopRoom.participants.values()).filter((participant) => participant.state !== "disconnected"),
   ];
-  const featuredIdentity = getFeaturedParticipantIdentity(participants);
+  const immersiveLayout = shouldUseImmersiveLiveLayout();
+  const featuredIdentity = immersiveLayout ? getFeaturedParticipantIdentity(participants) : null;
+  const sharedScreenIdentity = participants.find((participant) => {
+    const track = getPrimaryVideoTrack(participant);
+    return track?.kind === "video" && String(track.name || "").toLowerCase() === "screen";
+  })?.identity || null;
   participants.forEach((participant, index) => {
-    if (liveViewerMode && featuredIdentity && participant.identity !== featuredIdentity) {
+    const shouldFocusFeaturedParticipant = liveViewerMode || (isMobileLandscapeLiveUI() && sharedScreenIdentity);
+    if (shouldFocusFeaturedParticipant && featuredIdentity && participant.identity !== featuredIdentity) {
       return;
     }
     const identity = participant.identity || `participant-${index}`;
@@ -1588,17 +1609,27 @@ function applyLiveViewerMode() {
   const stage = document.getElementById("live-workshop-stage-page");
   const button = document.getElementById("live-fullscreen-toggle");
   const viewerBar = document.getElementById("live-viewer-exit-bar");
+  const viewerFullscreenExitBtn = document.getElementById("live-viewer-fullscreen-exit");
   if (!root || !header || !controls || !panel || !shell || !stage || !button) return;
-  header.classList.toggle("hidden", liveViewerMode);
-  controls.classList.toggle("hidden", liveViewerMode);
-  panel.classList.toggle("hidden", isMobileLiveUI() || liveViewerMode || liveParticipantsCollapsed);
-  if (viewerBar) viewerBar.classList.toggle("hidden", !liveViewerMode);
-  shell.classList.toggle("p-0", liveViewerMode);
-  shell.classList.toggle("p-4", !liveViewerMode);
-  shell.classList.toggle("md:p-6", !liveViewerMode);
-  shell.classList.toggle("pb-28", !liveViewerMode);
-  stage.classList.toggle("min-h-screen", liveViewerMode);
-  stage.classList.toggle("min-h-[calc(100vh-14rem)]", !liveViewerMode);
+  const immersiveLayout = shouldUseImmersiveLiveLayout();
+  header.classList.toggle("hidden", immersiveLayout);
+  controls.classList.toggle("hidden", immersiveLayout);
+  panel.classList.toggle("hidden", isMobileLiveUI() || immersiveLayout || liveParticipantsCollapsed);
+  if (viewerBar) viewerBar.classList.toggle("hidden", !immersiveLayout);
+  if (viewerFullscreenExitBtn) viewerFullscreenExitBtn.classList.toggle("hidden", !liveViewerMode && !document.fullscreenElement);
+  shell.classList.toggle("p-0", immersiveLayout);
+  shell.classList.toggle("p-4", !immersiveLayout);
+  shell.classList.toggle("md:p-6", !immersiveLayout);
+  shell.classList.toggle("pb-28", !immersiveLayout);
+  stage.classList.toggle("gap-0", immersiveLayout);
+  stage.classList.toggle("gap-3", !immersiveLayout);
+  stage.classList.toggle("grid-cols-1", immersiveLayout);
+  stage.classList.toggle("md:grid-cols-2", !immersiveLayout);
+  stage.classList.toggle("min-h-screen", immersiveLayout);
+  stage.classList.toggle("min-h-[calc(100vh-14rem)]", !immersiveLayout);
+  root.style.height = immersiveLayout ? "100dvh" : "";
+  shell.style.minHeight = immersiveLayout ? "100dvh" : "";
+  stage.style.minHeight = immersiveLayout ? "100dvh" : "";
   button.textContent = liveViewerMode || document.fullscreenElement ? "Tam Ekrandan Çık" : "Tam Ekran";
   renderRoomParticipants();
 }
@@ -1821,6 +1852,10 @@ function setupLiveWorkshopUI() {
   });
   document.addEventListener("fullscreenchange", () => {
     if (!document.fullscreenElement && liveViewerMode) return;
+    applyLiveViewerMode();
+  });
+  window.addEventListener("resize", () => {
+    if (window.location.hash.replace("#", "") !== "canli-workshop") return;
     applyLiveViewerMode();
   });
   const releaseLiveMedia = () => {
