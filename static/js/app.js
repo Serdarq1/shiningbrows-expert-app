@@ -502,13 +502,13 @@ function formatExpertStatus(status) {
   if (normalized === "student") return "Shining Expert";
   if (normalized === "shining expert") return "Shining Expert";
   if (normalized === "master assistant") return "Master Assistant";
-  if (normalized === "master trainer" || normalized === "founder") return "Founder";
+  if (normalized === "master trainer") return "Master Trainer";
+  if (normalized === "founder") return "Founder";
   return status;
 }
 
 function normalizeExpertStatusForInput(status) {
   const normalized = String(status || "").toLowerCase().trim();
-  if (normalized === "founder") return "master trainer";
   if (normalized === "student") return "shining expert";
   return normalized;
 }
@@ -518,7 +518,8 @@ function buildExpertStatusOptions(selectedStatus) {
   const options = [
     { value: "shining expert", label: "Shining Expert" },
     { value: "master assistant", label: "Master Assistant" },
-    { value: "master trainer", label: "Founder" },
+    { value: "master trainer", label: "Master Trainer" },
+    { value: "founder", label: "Founder" },
   ];
   return options
     .map((option) => `<option value="${option.value}"${option.value === normalized ? " selected" : ""}>${option.label}</option>`)
