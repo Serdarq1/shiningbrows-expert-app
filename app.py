@@ -1,6 +1,8 @@
+import base64
 import io
 import mimetypes
 import os
+import time
 import uuid
 import bcrypt
 import json
@@ -86,6 +88,12 @@ SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "Images")
 SUPABASE_BOOK_BUCKET = os.getenv("SUPABASE_BOOK_BUCKET", "books")
 SUPABASE_VIDEO_BUCKET = os.getenv("SUPABASE_VIDEO_BUCKET", "videos")
 SUPABASE_TRUST_ENV = (os.getenv("SUPABASE_TRUST_ENV", "true").lower() in ("1", "true", "yes"))
+
+MUX_TOKEN_ID = os.getenv("MUX_TOKEN_ID", "").strip()
+MUX_TOKEN_SECRET = os.getenv("MUX_TOKEN_SECRET", "").strip()
+MUX_SIGNING_KEY_ID = os.getenv("MUX_SIGNING_KEY_ID", "").strip()
+MUX_SIGNING_PRIVATE_KEY = os.getenv("MUX_SIGNING_PRIVATE_KEY", "").strip()
+
 ALLOWED_REACTIONS = {"like", "love", "wow", "clap"}
 ELEVATED_ROLES = {"master", "admin"}
 ALLOWED_EXPERT_STATUSES = {"shining expert", "master trainer", "master assistant", "founder"}
@@ -264,6 +272,36 @@ def extract_drive_file_id(url: str) -> Optional[str]:
         if file_id:
             return file_id
     return None
+
+
+def _mux_request(method: str, path: str, body: Optional[dict] = None) -> dict:
+    credentials = base64.b64encode(f"{MUX_TOKEN_ID}:{MUX_TOKEN_SECRET}".encode()).decode()
+    data = json.dumps(body).encode() if body is not None else None
+    req = Request(
+        f"https://api.mux.com{path}",
+        data=data,
+        headers={"Authorization": f"Basic {credentials}", "Content-Type": "application/json"},
+        method=method,
+    )
+    with urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode())
+
+
+def _mux_signed_token(playback_id: str, expiry_seconds: int = 7200) -> str:
+    private_key_pem = base64.b64decode(MUX_SIGNING_PRIVATE_KEY).decode()
+    now = int(time.time())
+    return jwt.encode(
+        {"sub": playback_id, "aud": "v", "exp": now + expiry_seconds, "kid": MUX_SIGNING_KEY_ID},
+        private_key_pem,
+        algorithm="RS256",
+    )
+
+
+def _is_mux_playback_id(value: str) -> bool:
+    """Return True if value looks like a Mux playback ID (no slashes, dots, or http prefix)."""
+    if not value or value.startswith("http") or "/" in value or "." in value:
+        return False
+    return bool(re.match(r'^[a-zA-Z0-9]{10,40}$', value))
 
 
 def _normalize_name(name: str) -> str:
@@ -928,9 +966,18 @@ def api_videos_get() -> Any:
         for video in videos:
             stored_value = video.get("video_url", "")
             video["video_path"] = stored_value
-            url = build_storage_url(stored_value, SUPABASE_VIDEO_BUCKET) if stored_value else None
-            if url:
-                video["video_url"] = url
+            if _is_mux_playback_id(stored_value):
+                video["playback_id"] = stored_value
+                if MUX_SIGNING_KEY_ID and MUX_SIGNING_PRIVATE_KEY:
+                    try:
+                        video["token"] = _mux_signed_token(stored_value)
+                    except Exception as exc:
+                        print("Mux token generation failed:", exc)
+                video["video_url"] = f"https://stream.mux.com/{stored_value}.m3u8"
+            else:
+                url = build_storage_url(stored_value, SUPABASE_VIDEO_BUCKET) if stored_value else None
+                if url:
+                    video["video_url"] = url
         return jsonify(videos)
     except Exception as exc:
         print("Videos fetch failed:", exc)
@@ -939,7 +986,60 @@ def api_videos_get() -> Any:
 
 @app.route("/api/videos/import", methods=["POST"])
 def api_videos_import() -> Any:
-    return jsonify({"error": "Video import özelliği kaldırıldı."}), 410
+    student = get_current_student()
+    if not student:
+        return jsonify({"error": "Oturum bulunamadı"}), 401
+    if student.get("role") not in ELEVATED_ROLES:
+        return jsonify({"error": "Yetkisiz işlem"}), 403
+    if not supabase:
+        return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+    if not MUX_TOKEN_ID or not MUX_TOKEN_SECRET:
+        return jsonify({"error": "Mux yapılandırması eksik."}), 500
+
+    payload = request.get_json() or {}
+    url = (payload.get("url") or "").strip()
+    title = (payload.get("title") or "Video").strip()
+    if not url:
+        return jsonify({"error": "Video linki gerekli."}), 400
+
+    try:
+        policy = "signed" if MUX_SIGNING_KEY_ID else "public"
+        mux_resp = _mux_request("POST", "/video/v1/assets", {
+            "input": [{"url": url}],
+            "playback_policy": [policy],
+        })
+        asset = mux_resp.get("data", {})
+        playback_ids = asset.get("playback_ids", [])
+        if not playback_ids:
+            return jsonify({"error": "Mux playback ID alınamadı."}), 500
+        playback_id = playback_ids[0]["id"]
+    except Exception as exc:
+        print("Mux asset creation failed:", exc)
+        return jsonify({"error": f"Video Mux'a yüklenemedi: {exc}"}), 500
+
+    record: Dict[str, Any] = {
+        "title": title,
+        "video_url": playback_id,
+        "student_id": student["id"],
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    try:
+        db_response = supabase.table("videos").insert(record).execute()
+        inserted = getattr(db_response, "data", []) or []
+        if inserted:
+            record.update(inserted[0])
+    except Exception as exc:
+        print("Video DB insert failed:", exc)
+
+    record["playback_id"] = playback_id
+    if MUX_SIGNING_KEY_ID and MUX_SIGNING_PRIVATE_KEY:
+        try:
+            record["token"] = _mux_signed_token(playback_id)
+        except Exception as exc:
+            print("Mux token generation failed:", exc)
+    record["video_url"] = f"https://stream.mux.com/{playback_id}.m3u8"
+    record["video_path"] = playback_id
+    return jsonify(record), 201
 
 
 @app.route("/api/videos/<int:video_id>", methods=["PUT", "DELETE"])

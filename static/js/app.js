@@ -2329,7 +2329,13 @@ async function loadVideos() {
       const card = document.createElement("div");
       const title = video.title || "Video";
       const date = video.created_at ? new Date(video.created_at).toLocaleDateString("tr-TR") : "";
-      const playbackMarkup = `<video controls preload="metadata" playsinline webkit-playsinline class="w-full h-full object-cover" src="${escapeHTML(video.video_url || "")}"></video>`;
+      let playbackMarkup;
+      if (video.playback_id) {
+        const tokenAttr = video.token ? ` playback-token="${escapeHTML(video.token)}"` : "";
+        playbackMarkup = `<mux-player playback-id="${escapeHTML(video.playback_id)}"${tokenAttr} metadata-video-title="${escapeHTML(title)}" style="width:100%;aspect-ratio:16/9;" preload="metadata"></mux-player>`;
+      } else {
+        playbackMarkup = `<video controls preload="metadata" playsinline webkit-playsinline class="w-full h-full object-cover" src="${escapeHTML(video.video_url || "")}"></video>`;
+      }
       const meta = [];
       if (video.resolution) meta.push(`Kalite: ${video.resolution}`);
       card.className = "rounded-lg border border-gray-200 bg-white p-4 space-y-3";
@@ -2487,7 +2493,7 @@ function resetVideoForm() {
   const urlInput = form.querySelector('input[name="video_url"]');
   if (urlInput) {
     urlInput.disabled = false;
-    urlInput.placeholder = "Supabase public video linki";
+    urlInput.placeholder = "Video linki (herkese açık URL)";
   }
   if (cancelBtn) cancelBtn.classList.add("hidden");
 }

@@ -749,12 +749,12 @@
         <h3 class="font-semibold">Videolar</h3>
       </div>
       <div id="video-admin-card" class="hidden space-y-2">
-        <p class="text-sm text-zinc-600">Supabase public video linkini girin. Mux videoyu işleyip uygulamada yayınlar.</p>
+        <p class="text-sm text-zinc-600">Video linkini girin. Mux videoyu işleyip uygulamada yayınlar (işlem 1-5 dakika sürebilir).</p>
         <form id="video-form" class="space-y-2">
           <input type="hidden" name="video_id">
           <input name="video_title" placeholder="Video başlığı (isteğe bağlı)"
                  class="w-full rounded-lg bg-white border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400">
-          <input name="video_url" placeholder="Supabase public video linki"
+          <input name="video_url" placeholder="Video linki (herkese açık URL)"
                  class="w-full rounded-lg bg-white border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400">
           <button type="submit" class="w-full py-3 rounded-lg bg-zinc-900 hover:bg-zinc-900 text-white font-semibold shadow-md">
             Video Ekle
@@ -902,6 +902,7 @@
   aria-live="polite"
 ></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@mux/mux-player@3"></script>
 <script src="https://sdk.twilio.com/js/video/releases/2.29.0/twilio-video.min.js"></script>
 <script>
   window.SHINING_BROWS_CONFIG = {
