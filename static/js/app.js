@@ -503,6 +503,7 @@ function formatExpertStatus(status) {
   if (normalized === "master assistant") return "Master Assistant";
   if (normalized === "master trainer") return "Master Trainer";
   if (normalized === "founder") return "Founder";
+  if (normalized === "distributor") return "Distributor";
   return status;
 }
 
@@ -518,6 +519,7 @@ function buildExpertStatusOptions(selectedStatus) {
     { value: "shining expert", label: "Shining Expert" },
     { value: "master assistant", label: "Master Assistant" },
     { value: "master trainer", label: "Master Trainer" },
+    { value: "distributor", label: "Distributor" },
     { value: "founder", label: "Founder" },
   ];
   return options

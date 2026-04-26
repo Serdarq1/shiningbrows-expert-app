@@ -96,7 +96,7 @@ MUX_SIGNING_PRIVATE_KEY = os.getenv("MUX_SIGNING_PRIVATE_KEY", "").strip()
 
 ALLOWED_REACTIONS = {"like", "love", "wow", "clap"}
 ELEVATED_ROLES = {"master", "admin"}
-ALLOWED_EXPERT_STATUSES = {"shining expert", "master trainer", "master assistant", "founder"}
+ALLOWED_EXPERT_STATUSES = {"shining expert", "master trainer", "master assistant", "founder", "distributor"}
 MAX_VIDEO_MB = int(os.getenv("MAX_VIDEO_MB", "250"))
 DISABLE_SSL_VERIFY = os.getenv("DISABLE_SSL_VERIFY", "false").lower() in ("1", "true", "yes")
 DOWNLOAD_TIMEOUT_SEC = int(os.getenv("DOWNLOAD_TIMEOUT_SEC", "60"))
