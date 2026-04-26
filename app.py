@@ -287,7 +287,7 @@ def _mux_request(method: str, path: str, body: Optional[dict] = None) -> dict:
         return json.loads(resp.read().decode())
 
 
-def _mux_signed_token(playback_id: str, expiry_seconds: int = 7200) -> str:
+def _mux_signed_token(playback_id: str, expiry_seconds: int = 86400) -> str:
     private_key_pem = base64.b64decode(MUX_SIGNING_PRIVATE_KEY).decode()
     now = int(time.time())
     return jwt.encode(
@@ -298,10 +298,10 @@ def _mux_signed_token(playback_id: str, expiry_seconds: int = 7200) -> str:
 
 
 def _is_mux_playback_id(value: str) -> bool:
-    """Return True if value looks like a Mux playback ID (no slashes, dots, or http prefix)."""
-    if not value or value.startswith("http") or "/" in value or "." in value:
+    """Return True if value looks like a Mux playback ID (no slashes, dots, spaces, or http prefix)."""
+    if not value or value.startswith("http") or "/" in value or "." in value or " " in value:
         return False
-    return bool(re.match(r'^[a-zA-Z0-9]{10,40}$', value))
+    return bool(re.match(r'^[a-zA-Z0-9_\-]{8,60}$', value))
 
 
 def _normalize_name(name: str) -> str:
@@ -976,8 +976,11 @@ def api_videos_get() -> Any:
                 video["video_url"] = f"https://stream.mux.com/{stored_value}.m3u8"
             else:
                 url = build_storage_url(stored_value, SUPABASE_VIDEO_BUCKET) if stored_value else None
-                if url:
+                if url and url.startswith("http"):
                     video["video_url"] = url
+                elif not (stored_value or "").startswith("http"):
+                    video["video_url"] = None
+                    video["broken"] = True
         return jsonify(videos)
     except Exception as exc:
         print("Videos fetch failed:", exc)
@@ -993,29 +996,32 @@ def api_videos_import() -> Any:
         return jsonify({"error": "Yetkisiz işlem"}), 403
     if not supabase:
         return jsonify({"error": "Supabase yapılandırması eksik."}), 500
-    if not MUX_TOKEN_ID or not MUX_TOKEN_SECRET:
-        return jsonify({"error": "Mux yapılandırması eksik."}), 500
 
     payload = request.get_json() or {}
     url = (payload.get("url") or "").strip()
     title = (payload.get("title") or "Video").strip()
     if not url:
-        return jsonify({"error": "Video linki gerekli."}), 400
+        return jsonify({"error": "Mux Playback ID veya video linki gerekli."}), 400
 
-    try:
-        policy = "signed" if MUX_SIGNING_KEY_ID else "public"
-        mux_resp = _mux_request("POST", "/video/v1/assets", {
-            "input": [{"url": url}],
-            "playback_policy": [policy],
-        })
-        asset = mux_resp.get("data", {})
-        playback_ids = asset.get("playback_ids", [])
-        if not playback_ids:
-            return jsonify({"error": "Mux playback ID alınamadı."}), 500
-        playback_id = playback_ids[0]["id"]
-    except Exception as exc:
-        print("Mux asset creation failed:", exc)
-        return jsonify({"error": f"Video Mux'a yüklenemedi: {exc}"}), 500
+    if _is_mux_playback_id(url):
+        playback_id = url
+    else:
+        if not MUX_TOKEN_ID or not MUX_TOKEN_SECRET:
+            return jsonify({"error": "Mux yapılandırması eksik."}), 500
+        try:
+            policy = "signed" if MUX_SIGNING_KEY_ID else "public"
+            mux_resp = _mux_request("POST", "/video/v1/assets", {
+                "input": [{"url": url}],
+                "playback_policy": [policy],
+            })
+            asset = mux_resp.get("data", {})
+            playback_ids = asset.get("playback_ids", [])
+            if not playback_ids:
+                return jsonify({"error": "Mux playback ID alınamadı."}), 500
+            playback_id = playback_ids[0]["id"]
+        except Exception as exc:
+            print("Mux asset creation failed:", exc)
+            return jsonify({"error": "Video linki geçersiz veya Mux'a ulaşılamadı. Mux Playback ID'nizi doğrudan yapıştırmayı deneyin."}), 500
 
     record: Dict[str, Any] = {
         "title": title,
@@ -1212,15 +1218,21 @@ def _parse_identity(identity: str) -> Dict[str, Any]:
 def _get_workshop_by_id(workshop_id: int) -> Optional[Dict[str, Any]]:
     if not supabase:
         return None
-    response = (
-        supabase.table("workshops")
-        .select(_live_workshop_select())
-        .eq("id", workshop_id)
-        .limit(1)
-        .execute()
-    )
-    rows = getattr(response, "data", []) or []
-    return rows[0] if rows else None
+    last_exc: Optional[Exception] = None
+    for _ in range(2):
+        try:
+            response = (
+                supabase.table("workshops")
+                .select(_live_workshop_select())
+                .eq("id", workshop_id)
+                .limit(1)
+                .execute()
+            )
+            rows = getattr(response, "data", []) or []
+            return rows[0] if rows else None
+        except Exception as exc:
+            last_exc = exc
+    raise last_exc  # type: ignore[misc]
 
 
 def _get_workshop_by_room(room_sid: str = "", room_name: str = "") -> Optional[Dict[str, Any]]:

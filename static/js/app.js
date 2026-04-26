@@ -64,7 +64,6 @@ document.addEventListener("DOMContentLoaded", () => {
   loadQuickTips();
   loadEducation();
   loadCampaigns();
-  loadWorkshop();
   loadBook();
   loadFaqs();
   loadPhotos();
@@ -2333,8 +2332,10 @@ async function loadVideos() {
       if (video.playback_id) {
         const tokenAttr = video.token ? ` playback-token="${escapeHTML(video.token)}"` : "";
         playbackMarkup = `<mux-player playback-id="${escapeHTML(video.playback_id)}"${tokenAttr} metadata-video-title="${escapeHTML(title)}" style="width:100%;aspect-ratio:16/9;" preload="metadata"></mux-player>`;
+      } else if (video.broken || !video.video_url) {
+        playbackMarkup = `<div class="w-full h-full flex items-center justify-center text-zinc-400 text-sm">Video dosyası bulunamadı.</div>`;
       } else {
-        playbackMarkup = `<video controls preload="metadata" playsinline webkit-playsinline class="w-full h-full object-cover" src="${escapeHTML(video.video_url || "")}"></video>`;
+        playbackMarkup = `<video controls preload="metadata" playsinline webkit-playsinline class="w-full h-full object-cover" src="${escapeHTML(video.video_url)}"></video>`;
       }
       const meta = [];
       if (video.resolution) meta.push(`Kalite: ${video.resolution}`);
@@ -2493,7 +2494,7 @@ function resetVideoForm() {
   const urlInput = form.querySelector('input[name="video_url"]');
   if (urlInput) {
     urlInput.disabled = false;
-    urlInput.placeholder = "Video linki (herkese açık URL)";
+    urlInput.placeholder = "Mux Playback ID veya video linki";
   }
   if (cancelBtn) cancelBtn.classList.add("hidden");
 }
