@@ -12,8 +12,8 @@
       </div>
     </div>
     <div class="grid gap-6 md:grid-cols-2">
-      <div class="rounded-2xl bg-white border border-gray-200 p-6 flex items-center justify-center">
-        <img src="{{ url_for('static', filename=image_filename) }}" alt="{{ product.name }}" class="max-h-80 w-full object-contain" />
+      <div class=" flex items-center justify-center">
+        <img src="{{ url_for('static', filename=image_filename) }}" alt="{{ product.name }}" class="object-contain rounded-2xl shadow-2xl" />
       </div>
       <div class="space-y-4">
         <div>
@@ -86,8 +86,8 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           {% for item in related %}
             <a href="/product/{{ item.id }}" class="rounded-lg border border-gray-200 bg-white p-3 space-y-2 hover:shadow-sm transition">
-              <div class="h-24 flex items-center justify-center">
-                <img src="{{ url_for('static', filename='img/product-images/' ~ item.name ~ '.svg') }}" alt="{{ item.name }}" class="max-h-24 w-full object-contain" />
+              <div class="h-24 rounded-lg flex items-center justify-center">
+                <img src="{{ url_for('static', filename='img/product-images/' ~ item.name ~ '.svg') }}" alt="{{ item.name }}" class="max-h-24 rounded-lg w-full object-contain" />
               </div>
               <div class="">
                 <h4 class="text-sm font-semibold">{{ item.name }}</h4>

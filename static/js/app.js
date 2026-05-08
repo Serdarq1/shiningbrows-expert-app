@@ -737,7 +737,7 @@ async function loadProducts() {
     card.innerHTML = `
       <div class="product-img cursor-pointer">
         <button class="flex items-center justify-center w-full" type="button">
-          <img src="./static/img/product-images/${product.name}.svg" width="150" alt="${product.name}" />
+          <img class="border border-zinc-200 rounded-xl" src="./static/img/product-images/${product.name}.svg" width="150" alt="${product.name}" />
         </button>
         <div class="flex items-center justify-between">
           <h4 class="font-semibold">${product.name}</h4>
@@ -787,7 +787,7 @@ async function loadOrderProducts() {
     card.className = "rounded-lg border border-gray-200 bg-white p-3 space-y-2 cursor-pointer";
     card.innerHTML = `
       <div class="flex items-center justify-center">
-        <img src="./static/img/product-images/${product.name}.svg" width="200" alt="${product.name}" />
+        <img class="rounded-lg" src="./static/img/product-images/${product.name}.svg" width="200" alt="${product.name}" />
       </div>
       <div class="">
         <div class="flex items-center justify-between">
