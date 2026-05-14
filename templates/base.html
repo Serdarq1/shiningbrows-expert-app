@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -50,6 +50,10 @@
       --sb-gold: #caa24a;
       --sb-gold-soft: #f7e3a3;
       --sb-ink: #0f172a;
+      --sb-safe-top: env(safe-area-inset-top, 0px);
+      --sb-safe-right: env(safe-area-inset-right, 0px);
+      --sb-safe-bottom: env(safe-area-inset-bottom, 0px);
+      --sb-safe-left: env(safe-area-inset-left, 0px);
     }
 
     body {
@@ -64,15 +68,19 @@
       width: 100%;
       min-height: 100%;
       overflow-x: hidden;
-      overscroll-behavior: none;
+      overflow-y: auto;
+      overscroll-behavior-y: auto;
       -webkit-overflow-scrolling: touch;
       -webkit-text-size-adjust: 100%;
-      touch-action: manipulation;
     }
 
     body {
-      overscroll-behavior-y: none;
       -webkit-tap-highlight-color: transparent;
+      padding:
+        var(--sb-safe-top)
+        var(--sb-safe-right)
+        var(--sb-safe-bottom)
+        var(--sb-safe-left);
     }
 
     a,
@@ -81,6 +89,14 @@
     input[type="button"],
     input[type="submit"] {
       touch-action: manipulation;
+    }
+
+    .app-safe-top {
+      padding-top: max(1rem, calc(var(--sb-safe-top) + 1rem));
+    }
+
+    .app-safe-top-compact {
+      padding-top: max(0.75rem, calc(var(--sb-safe-top) + 0.75rem));
     }
 
     @media (max-width: 768px) {

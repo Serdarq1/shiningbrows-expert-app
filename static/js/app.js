@@ -3137,13 +3137,17 @@ function renderFeed() {
         <span>${reaction.label}</span>
         <span class="text-xs text-zinc-500">${count}</span>
       `;
-      btn.addEventListener("click", async () => {
+      btn.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
         btn.disabled = true;
         try {
           await sendReaction(photo.id, reaction.id);
-          await loadFeed();
+          applyReactionToFeedPhoto(photo.id, reaction.id);
+          renderFeed();
+          showToast("Reaksiyon kaydedildi.", { type: "success", duration: 1600 });
         } catch (err) {
-          alert("Reaksiyon gönderilemedi.");
+          showToast("Reaksiyon gönderilemedi.", { type: "error" });
         } finally {
           btn.disabled = false;
         }
@@ -3235,6 +3239,23 @@ async function sendReaction(photoId, reaction) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ photo_id: photoId, reaction }),
+  });
+}
+
+function applyReactionToFeedPhoto(photoId, reaction) {
+  const targetId = Number(photoId);
+  feedPhotos = (Array.isArray(feedPhotos) ? feedPhotos : []).map((photo) => {
+    if (Number(photo.id) !== targetId) return photo;
+    const nextPhoto = { ...photo };
+    const nextReactions = { ...(photo.reactions || {}) };
+    const previousReaction = photo.my_reaction;
+    if (previousReaction && nextReactions[previousReaction]) {
+      nextReactions[previousReaction] = Math.max(0, nextReactions[previousReaction] - 1);
+    }
+    nextReactions[reaction] = (nextReactions[reaction] || 0) + 1;
+    nextPhoto.reactions = nextReactions;
+    nextPhoto.my_reaction = reaction;
+    return nextPhoto;
   });
 }
 
