@@ -2,7 +2,7 @@
       "relation": ["delegate_permission/common.handle_all_urls"],
       "target": {
         "namespace": "android_app",
-        "package_name": "com.shiningbrowsacademy.experts.app",
-        "sha256_cert_fingerprints": ["B4:BC:78:A9:D9:87:51:53:3C:4D:2A:B2:3E:88:A4:9E:2E:25:CF:AD:FC:92:AE:21:E6:B5:BF:AA:27:E6:17:42"]
+        "package_name": "com.shiningbrowsacademy.experts",
+        "sha256_cert_fingerprints": ["C2:CA:A7:2B:B0:12:E1:7C:28:07:E7:D9:E0:80:EF:DE:AD:48:70:FC:50:9E:03:A3:4B:80:CE:40:A4:5A:88:F2"]
       }
     }]
