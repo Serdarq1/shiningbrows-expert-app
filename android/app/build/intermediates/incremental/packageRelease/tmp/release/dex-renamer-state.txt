@@ -1,0 +1,4 @@
+#Sun May 24 20:13:05 TRT 2026
+base.0=/Users/serdarakova/Library/Mobile Documents/com~apple~CloudDocs/Desktop/projects/shining brows öğrenci uygulaması/android/app/build/intermediates/dex/release/minifyReleaseWithR8/classes.dex
+path.0=classes.dex
+renamed.0=classes.dex
