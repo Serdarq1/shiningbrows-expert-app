@@ -46,6 +46,12 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    /* Renders before the Tailwind CDN script generates its utility CSS, so
+       elements relying on the .hidden class don't flash visible on first paint. */
+    .hidden {
+      display: none !important;
+    }
+
     :root {
       --sb-gold: #caa24a;
       --sb-gold-soft: #f7e3a3;

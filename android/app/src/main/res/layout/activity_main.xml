@@ -20,4 +20,13 @@
         android:layout_height="match_parent"
         android:layout_below="@id/progressBar" />
 
+    <ImageView
+        android:id="@+id/splashOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#FFFFFF"
+        android:src="@mipmap/ic_launcher"
+        android:scaleType="centerInside"
+        android:padding="48dp" />
+
 </RelativeLayout>

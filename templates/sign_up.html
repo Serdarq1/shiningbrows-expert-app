@@ -1,30 +1,100 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <div class="app-safe-top-compact min-h-screen flex items-start md:items-center justify-center px-4 py-8 md:py-12">
-    <div class="w-full max-w-md">
-      <div id="app"></div>
+  <div class="app-safe-top min-h-[100svh] flex flex-col px-6 py-8">
+    <div class="flex-1 flex flex-col justify-center w-full mx-auto" style="max-width: 420px;">
+      <div class="mb-8 text-center">
+        <img src="{{ url_for('static', filename='img/sb-logo.png') }}" alt="Shining Brows" class="w-16 h-16 mx-auto mb-4 rounded-full object-cover">
+        <h1 class="font-display text-2xl text-zinc-900">Kayıt Ol</h1>
+        <p class="text-sm text-zinc-600 mt-1">Hesap oluşturmak için bilgilerinizi girin</p>
+      </div>
+
+      <form id="sign-up-form" class="space-y-4" data-step="sign-up" novalidate>
+        <div id="sign-up-fields" class="space-y-4">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="first-name" class="block text-sm font-medium text-zinc-800 mb-1.5">Ad</label>
+              <input id="first-name" type="text" autocomplete="given-name" required
+                class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
+                placeholder="Adınız">
+            </div>
+            <div>
+              <label for="last-name" class="block text-sm font-medium text-zinc-800 mb-1.5">Soyad</label>
+              <input id="last-name" type="text" autocomplete="family-name" required
+                class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
+                placeholder="Soyadınız">
+            </div>
+          </div>
+          <div>
+            <label for="email" class="block text-sm font-medium text-zinc-800 mb-1.5">E-posta</label>
+            <input id="email" type="email" autocomplete="email" required
+              class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
+              placeholder="email@example.com">
+          </div>
+          <div>
+            <label for="password" class="block text-sm font-medium text-zinc-800 mb-1.5">Şifre</label>
+            <div class="relative">
+              <input id="password" type="password" autocomplete="new-password" required
+                class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-12 text-base focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
+                placeholder="Şifrenizi girin">
+              <button type="button" id="toggle-password" aria-label="Şifreyi göster/gizle"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label for="confirm-password" class="block text-sm font-medium text-zinc-800 mb-1.5">Şifreyi Onayla</label>
+            <div class="relative">
+              <input id="confirm-password" type="password" autocomplete="new-password" required
+                class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-12 text-base focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
+                placeholder="Şifrenizi tekrar girin">
+              <button type="button" id="toggle-confirm-password" aria-label="Şifreyi göster/gizle"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="verify-fields" class="space-y-4 hidden">
+          <p class="text-sm text-zinc-600">E-postanıza gönderilen doğrulama kodunu girin. E-postayı bulamıyorsanız spam/gereksiz klasörünüzü kontrol edin.</p>
+          <div>
+            <label for="verify-code" class="block text-sm font-medium text-zinc-800 mb-1.5">Doğrulama Kodu</label>
+            <input id="verify-code" type="text" inputmode="numeric" autocomplete="one-time-code"
+              class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
+              placeholder="123456">
+          </div>
+          <button type="button" id="resend-code-link" class="text-sm text-gold-600 hover:underline disabled:opacity-60">Kodu tekrar gönder</button>
+        </div>
+
+        <div id="error-message" class="text-sm text-red-600 hidden"></div>
+
+        <button type="submit" id="submit-button"
+          class="w-full rounded-lg bg-zinc-900 text-white py-3 text-base font-medium disabled:opacity-60">
+          Kayıt Ol
+        </button>
+
+        <p id="legal-text" class="text-xs text-zinc-500 text-center">
+          Hesap oluşturarak
+          <a href="https://www.shiningbrowsacademy.com/pages/expert-portal-privacy-policy" target="_blank" class="text-gold-600 hover:underline">Hizmet Şartları</a>
+          ve
+          <a href="https://www.shiningbrowsacademy.com/pages/expert-portal-privacy-policy" target="_blank" class="text-gold-600 hover:underline">Gizlilik Politikası</a>'nı
+          kabul edersiniz.
+        </p>
+      </form>
+
+      <p class="text-center text-sm text-zinc-600 mt-6">
+        Zaten hesabınız var mı? <a href="/login" class="text-gold-600 font-medium hover:underline">Giriş Yap</a>
+      </p>
     </div>
   </div>
-  <style>
-    #app {
-      width: 100%;
-      display: flex;
-      justify-content: center;
-    }
-    #app > div {
-      width: 100%;
-      max-width: 420px;
-    }
-    @media (max-width: 640px) {
-      body {
-        background: #f8f7f4;
-      }
-      #app > div {
-        max-width: 360px;
-      }
-    }
-  </style>
 
   <script
     async
@@ -34,6 +104,5 @@
     type="text/javascript"
   ></script>
 
-  <script src="/static/js/clerk.tr.js"></script>
   <script src="/static/js/sign-up.js"></script>
 {% endblock %}

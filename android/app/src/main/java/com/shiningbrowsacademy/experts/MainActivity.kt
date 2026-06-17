@@ -8,7 +8,9 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Message
 import android.view.View
+import android.view.animation.AlphaAnimation
 import android.webkit.*
+import android.widget.ImageView
 import android.widget.ProgressBar
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,6 +20,8 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
+    private lateinit var splashOverlay: ImageView
+    private var splashDismissed = false
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
 
     private val fileChooserLauncher = registerForActivityResult(
@@ -39,6 +43,7 @@ class MainActivity : AppCompatActivity() {
 
         webView = findViewById(R.id.webView)
         progressBar = findViewById(R.id.progressBar)
+        splashOverlay = findViewById(R.id.splashOverlay)
 
         webView.settings.apply {
             javaScriptEnabled = true
@@ -67,6 +72,7 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView, url: String) {
                 progressBar.visibility = View.GONE
+                dismissSplashOverlay()
             }
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -88,6 +94,7 @@ class MainActivity : AppCompatActivity() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 progressBar.progress = newProgress
                 progressBar.visibility = if (newProgress == 100) View.GONE else View.VISIBLE
+                if (newProgress == 100) dismissSplashOverlay()
             }
 
             override fun onPermissionRequest(request: PermissionRequest) {
@@ -146,6 +153,14 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         })
+    }
+
+    private fun dismissSplashOverlay() {
+        if (splashDismissed) return
+        splashDismissed = true
+        val fadeOut = AlphaAnimation(1f, 0f).apply { duration = 250 }
+        splashOverlay.startAnimation(fadeOut)
+        splashOverlay.visibility = View.GONE
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
