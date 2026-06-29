@@ -94,9 +94,13 @@ window.addEventListener("load", async () => {
 
   const setStep = (step) => {
     form.dataset.step = step;
+    // ponytail: .hidden class is CSS-only; the `hidden` IDL prop also bars these fields from checkValidity()
     signInFields.classList.toggle("hidden", step !== "sign-in");
+    signInFields.hidden = step !== "sign-in";
     resetRequestFields.classList.toggle("hidden", step !== "reset-request");
+    resetRequestFields.hidden = step !== "reset-request";
     resetConfirmFields.classList.toggle("hidden", step !== "reset-confirm");
+    resetConfirmFields.hidden = step !== "reset-confirm";
     forgotLink.classList.toggle("hidden", step !== "sign-in");
     backLink.classList.toggle("hidden", step === "sign-in");
     submitButton.textContent =
@@ -104,6 +108,7 @@ window.addEventListener("load", async () => {
     clearError();
     updateSubmitState();
   };
+  setStep(form.dataset.step);
 
   togglePasswordButton.addEventListener("click", () => {
     passwordInput.type = passwordInput.type === "password" ? "text" : "password";
