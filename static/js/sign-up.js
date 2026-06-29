@@ -30,8 +30,12 @@ window.addEventListener("load", async () => {
 
   let currentSignUp = null;
 
+  // ponytail: form.checkValidity() does NOT skip hidden required fields from other steps,
+  // so filter to fields that are actually visible right now (checkVisibility covers display:none + [hidden])
+  const isVisible = (el) => (el.checkVisibility ? el.checkVisibility() : el.offsetParent !== null);
   const updateSubmitState = () => {
-    submitButton.disabled = !form.checkValidity();
+    const fields = [...form.querySelectorAll("[required]")];
+    submitButton.disabled = !fields.every((el) => !isVisible(el) || el.checkValidity());
   };
   form.addEventListener("input", updateSubmitState);
   form.addEventListener("change", updateSubmitState);
@@ -65,13 +69,9 @@ window.addEventListener("load", async () => {
 
   const setStep = (step) => {
     form.dataset.step = step;
-    // ponytail: .hidden class is CSS-only; the `hidden` IDL prop also bars these fields from checkValidity()
     signUpFields.classList.toggle("hidden", step !== "sign-up");
-    signUpFields.hidden = step !== "sign-up";
     legalText.classList.toggle("hidden", step !== "sign-up");
-    legalText.hidden = step !== "sign-up";
     verifyFields.classList.toggle("hidden", step !== "verify");
-    verifyFields.hidden = step !== "verify";
     submitButton.textContent = step === "sign-up" ? "Kayıt Ol" : "Doğrula";
     clearError();
     updateSubmitState();

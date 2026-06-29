@@ -33,9 +33,12 @@ window.addEventListener("load", async () => {
 
   let resetSignIn = null;
 
-  // ponytail: native form validation already excludes hidden/inactive step fields
+  // ponytail: form.checkValidity() does NOT skip hidden required fields from other steps,
+  // so filter to fields that are actually visible right now (checkVisibility covers display:none + [hidden])
+  const isVisible = (el) => (el.checkVisibility ? el.checkVisibility() : el.offsetParent !== null);
   const updateSubmitState = () => {
-    submitButton.disabled = !form.checkValidity();
+    const fields = [...form.querySelectorAll("[required]")];
+    submitButton.disabled = !fields.every((el) => !isVisible(el) || el.checkValidity());
   };
   form.addEventListener("input", updateSubmitState);
   form.addEventListener("change", updateSubmitState);
@@ -94,13 +97,9 @@ window.addEventListener("load", async () => {
 
   const setStep = (step) => {
     form.dataset.step = step;
-    // ponytail: .hidden class is CSS-only; the `hidden` IDL prop also bars these fields from checkValidity()
     signInFields.classList.toggle("hidden", step !== "sign-in");
-    signInFields.hidden = step !== "sign-in";
     resetRequestFields.classList.toggle("hidden", step !== "reset-request");
-    resetRequestFields.hidden = step !== "reset-request";
     resetConfirmFields.classList.toggle("hidden", step !== "reset-confirm");
-    resetConfirmFields.hidden = step !== "reset-confirm";
     forgotLink.classList.toggle("hidden", step !== "sign-in");
     backLink.classList.toggle("hidden", step === "sign-in");
     submitButton.textContent =
