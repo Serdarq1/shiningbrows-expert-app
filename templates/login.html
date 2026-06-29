@@ -35,13 +35,22 @@
           <div class="text-right">
             <button type="button" id="forgot-password-link" class="text-sm text-gold-600 hover:underline">Şifremi unuttum</button>
           </div>
+          <label class="flex items-start gap-2 text-xs text-zinc-600">
+            <input type="checkbox" id="consent-checkbox" required class="mt-0.5">
+            <span>
+              <a href="https://www.shiningbrowsacademy.com/kvkk" target="_blank" class="text-gold-600 hover:underline">Kullanım Koşullarını</a>
+              ve
+              <a href="https://www.shiningbrowsacademy.com/expert-portal-privacy-policy" target="_blank" class="text-gold-600 hover:underline">Gizlilik Politikasını</a>
+              kabul ediyorum.
+            </span>
+          </label>
         </div>
 
         <div id="reset-request-fields" class="space-y-4 hidden">
           <p class="text-sm text-zinc-600">Şifrenizi sıfırlamak için e-posta adresinizi girin. Size bir doğrulama kodu göndereceğiz.</p>
           <div>
             <label for="reset-email" class="block text-sm font-medium text-zinc-800 mb-1.5">E-posta</label>
-            <input id="reset-email" type="email" autocomplete="email"
+            <input id="reset-email" type="email" autocomplete="email" required
               class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
               placeholder="email@example.com">
           </div>
@@ -51,13 +60,13 @@
           <p class="text-sm text-zinc-600">E-postanıza gönderilen kodu ve yeni şifrenizi girin.</p>
           <div>
             <label for="reset-code" class="block text-sm font-medium text-zinc-800 mb-1.5">Doğrulama Kodu</label>
-            <input id="reset-code" type="text" inputmode="numeric" autocomplete="one-time-code"
+            <input id="reset-code" type="text" inputmode="numeric" autocomplete="one-time-code" required
               class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
               placeholder="123456">
           </div>
           <div>
             <label for="reset-new-password" class="block text-sm font-medium text-zinc-800 mb-1.5">Yeni Şifre</label>
-            <input id="reset-new-password" type="password" autocomplete="new-password"
+            <input id="reset-new-password" type="password" autocomplete="new-password" required
               class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-gold-400"
               placeholder="Yeni şifrenizi girin">
           </div>

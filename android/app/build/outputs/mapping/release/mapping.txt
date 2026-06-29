@@ -3,8 +3,8 @@
 # min_api: 21
 # common_typos_disable
 # {"id":"com.android.tools.r8.mapping","version":"2.2"}
-# pg_map_id: ff4ab1a
-# pg_map_hash: SHA-256 ff4ab1a66733514647f4962daf580619774b8dd06ae9b159dfd8bcaadb230114
+# pg_map_id: 3511801
+# pg_map_hash: SHA-256 35118014f8e604e01a3ee91de5955c10ef37d0ce338f557bfb8df5a5451b7e1d
 android.support.v4.app.RemoteActionCompatParcelizer -> android.support.v4.app.RemoteActionCompatParcelizer:
 # {"id":"sourceFile","fileName":"RemoteActionCompatParcelizer.java"}
     1:4:void <init>():8:8 -> <init>
@@ -46426,106 +46426,124 @@ com.shiningbrowsacademy.experts.MainActivity -> com.shiningbrowsacademy.experts.
     androidx.activity.result.ActivityResultLauncher fileChooserLauncher -> fileChooserLauncher
       # {"id":"com.android.tools.r8.residualsignature","signature":"Lb/c;"}
     1:3:void androidx.appcompat.app.AppCompatActivity.<init>():96:96 -> <init>
-    1:3:void <init>():17 -> <init>
+    1:3:void <init>():19 -> <init>
     4:17:void androidx.appcompat.app.AppCompatActivity.initDelegate():118:118 -> <init>
     4:17:void androidx.appcompat.app.AppCompatActivity.<init>():97 -> <init>
-    4:17:void <init>():17 -> <init>
+    4:17:void <init>():19 -> <init>
     18:25:void androidx.appcompat.app.AppCompatActivity.initDelegate():128:128 -> <init>
     18:25:void androidx.appcompat.app.AppCompatActivity.<init>():97 -> <init>
-    18:25:void <init>():17 -> <init>
-    26:28:void <init>():24:24 -> <init>
-    29:31:void androidx.activity.result.contract.ActivityResultContract.<init>():29:29 -> <init>
+    18:25:void <init>():19 -> <init>
+    26:28:void <init>():28:28 -> <init>
+    29:31:void <init>():29:29 -> <init>
+    29:31:void androidx.activity.result.contract.ActivityResultContract.<init>():29 -> <init>
     29:31:void androidx.activity.result.contract.ActivityResultContracts$StartActivityForResult.<init>():59 -> <init>
-    29:31:void <init>():24 -> <init>
-    32:43:void <init>():23:23 -> <init>
-    1:3:android.webkit.ValueCallback access$getFileChooserCallback$p(com.shiningbrowsacademy.experts.MainActivity):17:17 -> access$getFileChooserCallback$p
-    1:3:androidx.activity.result.ActivityResultLauncher access$getFileChooserLauncher$p(com.shiningbrowsacademy.experts.MainActivity):17:17 -> access$getFileChooserLauncher$p
+    29:31:void <init>():28 -> <init>
+    32:43:void <init>():27:27 -> <init>
+    1:4:android.webkit.WebView access$getWebView$p(com.shiningbrowsacademy.experts.MainActivity):19:19 -> access$dismissSplashOverlay
+    1:4:void access$dismissSplashOverlay(com.shiningbrowsacademy.experts.MainActivity):19 -> access$dismissSplashOverlay
+    1:3:android.webkit.WebView access$getWebView$p(com.shiningbrowsacademy.experts.MainActivity):19:19 -> access$getFileChooserCallback$p
+    1:3:android.webkit.ValueCallback access$getFileChooserCallback$p(com.shiningbrowsacademy.experts.MainActivity):19 -> access$getFileChooserCallback$p
+    1:3:android.webkit.WebView access$getWebView$p(com.shiningbrowsacademy.experts.MainActivity):19:19 -> access$getFileChooserLauncher$p
+    1:3:androidx.activity.result.ActivityResultLauncher access$getFileChooserLauncher$p(com.shiningbrowsacademy.experts.MainActivity):19 -> access$getFileChooserLauncher$p
       # {"id":"com.android.tools.r8.residualsignature","signature":"(Lcom/shiningbrowsacademy/experts/MainActivity;)Lb/c;"}
-    1:3:android.widget.ProgressBar access$getProgressBar$p(com.shiningbrowsacademy.experts.MainActivity):17:17 -> access$getProgressBar$p
-    1:3:android.webkit.WebView access$getWebView$p(com.shiningbrowsacademy.experts.MainActivity):17:17 -> access$getWebView$p
-    1:3:void access$setFileChooserCallback$p(com.shiningbrowsacademy.experts.MainActivity,android.webkit.ValueCallback):17:17 -> access$setFileChooserCallback$p
+    1:3:android.webkit.WebView access$getWebView$p(com.shiningbrowsacademy.experts.MainActivity):19:19 -> access$getProgressBar$p
+    1:3:android.widget.ProgressBar access$getProgressBar$p(com.shiningbrowsacademy.experts.MainActivity):19 -> access$getProgressBar$p
+    1:3:android.webkit.WebView access$getWebView$p(com.shiningbrowsacademy.experts.MainActivity):19:19 -> access$getWebView$p
+    1:3:android.webkit.WebView access$getWebView$p(com.shiningbrowsacademy.experts.MainActivity):19:19 -> access$setFileChooserCallback$p
+    1:3:void access$setFileChooserCallback$p(com.shiningbrowsacademy.experts.MainActivity,android.webkit.ValueCallback):19 -> access$setFileChooserCallback$p
+    1:6:void dismissSplashOverlay():159:159 -> dismissSplashOverlay
+    7:8:void dismissSplashOverlay():160:160 -> dismissSplashOverlay
+    9:21:void dismissSplashOverlay():161:161 -> dismissSplashOverlay
+    22:31:void dismissSplashOverlay():162:162 -> dismissSplashOverlay
+    32:45:void dismissSplashOverlay():163:163 -> dismissSplashOverlay
+    46:49:void dismissSplashOverlay():162:162 -> dismissSplashOverlay
     1:1:void $r8$lambda$TXMmnbSYURJ4X7PIw5Svy3KcuXw(com.shiningbrowsacademy.experts.MainActivity,b.ActivityResult):0:0 -> e
       # {"id":"com.android.tools.r8.synthesized"}
       # {"id":"com.android.tools.r8.residualsignature","signature":"(Lcom/shiningbrowsacademy/experts/MainActivity;Lb/a;)V"}
-    8:11:void fileChooserLauncher$lambda$0(com.shiningbrowsacademy.experts.MainActivity,androidx.activity.result.ActivityResult):26:26 -> fileChooserLauncher$lambda$0
+    8:11:void fileChooserLauncher$lambda$0(com.shiningbrowsacademy.experts.MainActivity,androidx.activity.result.ActivityResult):30:30 -> fileChooserLauncher$lambda$0
       # {"id":"com.android.tools.r8.residualsignature","signature":"(Lcom/shiningbrowsacademy/experts/MainActivity;Lb/a;)V"}
-    12:19:void fileChooserLauncher$lambda$0(com.shiningbrowsacademy.experts.MainActivity,androidx.activity.result.ActivityResult):27:27 -> fileChooserLauncher$lambda$0
-    20:26:void fileChooserLauncher$lambda$0(com.shiningbrowsacademy.experts.MainActivity,androidx.activity.result.ActivityResult):31:31 -> fileChooserLauncher$lambda$0
-    27:29:void fileChooserLauncher$lambda$0(com.shiningbrowsacademy.experts.MainActivity,androidx.activity.result.ActivityResult):32:32 -> fileChooserLauncher$lambda$0
-    1:3:void onCreate(android.os.Bundle):37:37 -> onCreate
-    4:8:void onCreate(android.os.Bundle):38:38 -> onCreate
-    9:18:void onCreate(android.os.Bundle):40:40 -> onCreate
-    19:28:void onCreate(android.os.Bundle):41:41 -> onCreate
-    29:40:void onCreate(android.os.Bundle):43:43 -> onCreate
-    41:43:void onCreate(android.os.Bundle):44:44 -> onCreate
-    44:46:void onCreate(android.os.Bundle):45:45 -> onCreate
-    47:49:void onCreate(android.os.Bundle):46:46 -> onCreate
-    50:53:void onCreate(android.os.Bundle):47:47 -> onCreate
-    54:56:void onCreate(android.os.Bundle):48:48 -> onCreate
-    57:59:void onCreate(android.os.Bundle):49:49 -> onCreate
-    60:62:void onCreate(android.os.Bundle):50:50 -> onCreate
-    63:65:void onCreate(android.os.Bundle):51:51 -> onCreate
-    66:68:void onCreate(android.os.Bundle):52:52 -> onCreate
-    69:71:void onCreate(android.os.Bundle):53:53 -> onCreate
-    72:74:void onCreate(android.os.Bundle):54:54 -> onCreate
-    75:77:void onCreate(android.os.Bundle):55:55 -> onCreate
-    78:81:void onCreate(android.os.Bundle):58:58 -> onCreate
+    12:19:void fileChooserLauncher$lambda$0(com.shiningbrowsacademy.experts.MainActivity,androidx.activity.result.ActivityResult):31:31 -> fileChooserLauncher$lambda$0
+    20:26:void fileChooserLauncher$lambda$0(com.shiningbrowsacademy.experts.MainActivity,androidx.activity.result.ActivityResult):35:35 -> fileChooserLauncher$lambda$0
+    27:29:void fileChooserLauncher$lambda$0(com.shiningbrowsacademy.experts.MainActivity,androidx.activity.result.ActivityResult):36:36 -> fileChooserLauncher$lambda$0
+    1:3:void onCreate(android.os.Bundle):41:41 -> onCreate
+    4:8:void onCreate(android.os.Bundle):42:42 -> onCreate
+    9:18:void onCreate(android.os.Bundle):44:44 -> onCreate
+    19:28:void onCreate(android.os.Bundle):45:45 -> onCreate
+    29:38:void onCreate(android.os.Bundle):46:46 -> onCreate
+    39:50:void onCreate(android.os.Bundle):48:48 -> onCreate
+    51:53:void onCreate(android.os.Bundle):49:49 -> onCreate
+    54:56:void onCreate(android.os.Bundle):50:50 -> onCreate
+    57:59:void onCreate(android.os.Bundle):51:51 -> onCreate
+    60:63:void onCreate(android.os.Bundle):52:52 -> onCreate
+    64:66:void onCreate(android.os.Bundle):53:53 -> onCreate
+    67:69:void onCreate(android.os.Bundle):54:54 -> onCreate
+    70:72:void onCreate(android.os.Bundle):55:55 -> onCreate
+    73:75:void onCreate(android.os.Bundle):56:56 -> onCreate
+    76:78:void onCreate(android.os.Bundle):57:57 -> onCreate
+    79:81:void onCreate(android.os.Bundle):58:58 -> onCreate
     82:84:void onCreate(android.os.Bundle):59:59 -> onCreate
-    85:91:void onCreate(android.os.Bundle):60:60 -> onCreate
-    92:103:void onCreate(android.os.Bundle):63:63 -> onCreate
-    104:117:void onCreate(android.os.Bundle):87:87 -> onCreate
-    118:129:void onCreate(android.os.Bundle):134:134 -> onCreate
-    130:138:void onCreate(android.os.Bundle):136:136 -> onCreate
-    139:151:void onCreate(android.os.Bundle):139:139 -> onCreate
-    152:155:void onCreate(android.os.Bundle):136:136 -> onCreate
-    156:159:void onCreate(android.os.Bundle):87:87 -> onCreate
-    160:163:void onCreate(android.os.Bundle):63:63 -> onCreate
-    164:167:void onCreate(android.os.Bundle):60:60 -> onCreate
-    168:171:void onCreate(android.os.Bundle):43:43 -> onCreate
-    6:8:void onSaveInstanceState(android.os.Bundle):152:152 -> onSaveInstanceState
-    9:23:void onSaveInstanceState(android.os.Bundle):153:153 -> onSaveInstanceState
+    85:87:void onCreate(android.os.Bundle):60:60 -> onCreate
+    88:91:void onCreate(android.os.Bundle):63:63 -> onCreate
+    92:94:void onCreate(android.os.Bundle):64:64 -> onCreate
+    95:101:void onCreate(android.os.Bundle):65:65 -> onCreate
+    102:113:void onCreate(android.os.Bundle):68:68 -> onCreate
+    114:127:void onCreate(android.os.Bundle):93:93 -> onCreate
+    128:139:void onCreate(android.os.Bundle):141:141 -> onCreate
+    140:148:void onCreate(android.os.Bundle):143:143 -> onCreate
+    149:161:void onCreate(android.os.Bundle):146:146 -> onCreate
+    162:165:void onCreate(android.os.Bundle):143:143 -> onCreate
+    166:169:void onCreate(android.os.Bundle):93:93 -> onCreate
+    170:173:void onCreate(android.os.Bundle):68:68 -> onCreate
+    174:177:void onCreate(android.os.Bundle):65:65 -> onCreate
+    178:181:void onCreate(android.os.Bundle):48:48 -> onCreate
+    6:8:void onSaveInstanceState(android.os.Bundle):167:167 -> onSaveInstanceState
+    9:23:void onSaveInstanceState(android.os.Bundle):168:168 -> onSaveInstanceState
 com.shiningbrowsacademy.experts.MainActivity$onCreate$3 -> com.shiningbrowsacademy.experts.MainActivity$onCreate$3:
 # {"id":"sourceFile","fileName":"MainActivity.kt"}
-    3:6:void <init>(com.shiningbrowsacademy.experts.MainActivity):63:63 -> <init>
-    11:31:void onPageFinished(android.webkit.WebView,java.lang.String):69:69 -> onPageFinished
-    11:30:void onPageStarted(android.webkit.WebView,java.lang.String,android.graphics.Bitmap):65:65 -> onPageStarted
-    11:23:boolean shouldOverrideUrlLoading(android.webkit.WebView,android.webkit.WebResourceRequest):73:73 -> shouldOverrideUrlLoading
+    3:6:void <init>(com.shiningbrowsacademy.experts.MainActivity):68:68 -> <init>
+    11:23:void onPageFinished(android.webkit.WebView,java.lang.String):74:74 -> onPageFinished
+    24:29:void onPageFinished(android.webkit.WebView,java.lang.String):75:75 -> onPageFinished
+    30:36:void onPageFinished(android.webkit.WebView,java.lang.String):74:74 -> onPageFinished
+    11:30:void onPageStarted(android.webkit.WebView,java.lang.String,android.graphics.Bitmap):70:70 -> onPageStarted
+    11:23:boolean shouldOverrideUrlLoading(android.webkit.WebView,android.webkit.WebResourceRequest):79:79 -> shouldOverrideUrlLoading
     24:32:boolean kotlin.text.StringsKt__StringsJVMKt.startsWith(java.lang.String,java.lang.String,boolean):419:419 -> shouldOverrideUrlLoading
     24:32:boolean kotlin.text.StringsKt__StringsJVMKt.startsWith$default(java.lang.String,java.lang.String,boolean,int,java.lang.Object):416 -> shouldOverrideUrlLoading
-    24:32:boolean shouldOverrideUrlLoading(android.webkit.WebView,android.webkit.WebResourceRequest):74 -> shouldOverrideUrlLoading
-    33:36:boolean shouldOverrideUrlLoading(android.webkit.WebView,android.webkit.WebResourceRequest):76:76 -> shouldOverrideUrlLoading
-    37:44:boolean shouldOverrideUrlLoading(android.webkit.WebView,android.webkit.WebResourceRequest):77:77 -> shouldOverrideUrlLoading
+    24:32:boolean shouldOverrideUrlLoading(android.webkit.WebView,android.webkit.WebResourceRequest):80 -> shouldOverrideUrlLoading
+    33:36:boolean shouldOverrideUrlLoading(android.webkit.WebView,android.webkit.WebResourceRequest):82:82 -> shouldOverrideUrlLoading
+    37:44:boolean shouldOverrideUrlLoading(android.webkit.WebView,android.webkit.WebResourceRequest):83:83 -> shouldOverrideUrlLoading
 com.shiningbrowsacademy.experts.MainActivity$onCreate$4 -> com.shiningbrowsacademy.experts.MainActivity$onCreate$4:
 # {"id":"sourceFile","fileName":"MainActivity.kt"}
-    3:6:void <init>(com.shiningbrowsacademy.experts.MainActivity):87:87 -> <init>
-    4:18:boolean onCreateWindow(android.webkit.WebView,boolean,boolean,android.os.Message):119:119 -> onCreateWindow
-    19:25:boolean onCreateWindow(android.webkit.WebView,boolean,boolean,android.os.Message):120:120 -> onCreateWindow
-    26:35:boolean onCreateWindow(android.webkit.WebView,boolean,boolean,android.os.Message):121:121 -> onCreateWindow
-    36:38:boolean onCreateWindow(android.webkit.WebView,boolean,boolean,android.os.Message):127:127 -> onCreateWindow
-    39:43:boolean onCreateWindow(android.webkit.WebView,boolean,boolean,android.os.Message):128:128 -> onCreateWindow
-    6:13:void onPermissionRequest(android.webkit.PermissionRequest):94:94 -> onPermissionRequest
-    6:19:void onProgressChanged(android.webkit.WebView,int):89:89 -> onProgressChanged
-    20:43:void onProgressChanged(android.webkit.WebView,int):90:90 -> onProgressChanged
-    44:47:void onProgressChanged(android.webkit.WebView,int):89:89 -> onProgressChanged
-    16:27:boolean onShowFileChooser(android.webkit.WebView,android.webkit.ValueCallback,android.webkit.WebChromeClient$FileChooserParams):102:102 -> onShowFileChooser
-    28:32:boolean onShowFileChooser(android.webkit.WebView,android.webkit.ValueCallback,android.webkit.WebChromeClient$FileChooserParams):103:103 -> onShowFileChooser
-    33:47:boolean onShowFileChooser(android.webkit.WebView,android.webkit.ValueCallback,android.webkit.WebChromeClient$FileChooserParams):105:105 -> onShowFileChooser
+    3:6:void <init>(com.shiningbrowsacademy.experts.MainActivity):93:93 -> <init>
+    4:18:boolean onCreateWindow(android.webkit.WebView,boolean,boolean,android.os.Message):126:126 -> onCreateWindow
+    19:25:boolean onCreateWindow(android.webkit.WebView,boolean,boolean,android.os.Message):127:127 -> onCreateWindow
+    26:35:boolean onCreateWindow(android.webkit.WebView,boolean,boolean,android.os.Message):128:128 -> onCreateWindow
+    36:38:boolean onCreateWindow(android.webkit.WebView,boolean,boolean,android.os.Message):134:134 -> onCreateWindow
+    39:43:boolean onCreateWindow(android.webkit.WebView,boolean,boolean,android.os.Message):135:135 -> onCreateWindow
+    6:13:void onPermissionRequest(android.webkit.PermissionRequest):101:101 -> onPermissionRequest
+    6:19:void onProgressChanged(android.webkit.WebView,int):95:95 -> onProgressChanged
+    20:40:void onProgressChanged(android.webkit.WebView,int):96:96 -> onProgressChanged
+    41:46:void onProgressChanged(android.webkit.WebView,int):97:97 -> onProgressChanged
+    47:50:void onProgressChanged(android.webkit.WebView,int):96:96 -> onProgressChanged
+    51:54:void onProgressChanged(android.webkit.WebView,int):95:95 -> onProgressChanged
+    16:27:boolean onShowFileChooser(android.webkit.WebView,android.webkit.ValueCallback,android.webkit.WebChromeClient$FileChooserParams):109:109 -> onShowFileChooser
+    28:32:boolean onShowFileChooser(android.webkit.WebView,android.webkit.ValueCallback,android.webkit.WebChromeClient$FileChooserParams):110:110 -> onShowFileChooser
+    33:47:boolean onShowFileChooser(android.webkit.WebView,android.webkit.ValueCallback,android.webkit.WebChromeClient$FileChooserParams):112:112 -> onShowFileChooser
     48:52:void androidx.activity.result.ActivityResultLauncher.launch(java.lang.Object):37:37 -> onShowFileChooser
-    48:52:boolean onShowFileChooser(android.webkit.WebView,android.webkit.ValueCallback,android.webkit.WebChromeClient$FileChooserParams):105 -> onShowFileChooser
+    48:52:boolean onShowFileChooser(android.webkit.WebView,android.webkit.ValueCallback,android.webkit.WebChromeClient$FileChooserParams):112 -> onShowFileChooser
       # {"id":"com.android.tools.r8.rewriteFrame","conditions":["throws(Ljava/lang/NullPointerException;)"],"actions":["removeInnerFrames(1)"]}
-    53:59:boolean onShowFileChooser(android.webkit.WebView,android.webkit.ValueCallback,android.webkit.WebChromeClient$FileChooserParams):107:107 -> onShowFileChooser
+    53:59:boolean onShowFileChooser(android.webkit.WebView,android.webkit.ValueCallback,android.webkit.WebChromeClient$FileChooserParams):114:114 -> onShowFileChooser
 com.shiningbrowsacademy.experts.MainActivity$onCreate$4$onCreateWindow$1 -> com.shiningbrowsacademy.experts.MainActivity$onCreate$4$onCreateWindow$1:
 # {"id":"sourceFile","fileName":"MainActivity.kt"}
-    3:6:void <init>(com.shiningbrowsacademy.experts.MainActivity):121:121 -> <init>
-    11:38:boolean shouldOverrideUrlLoading(android.webkit.WebView,android.webkit.WebResourceRequest):123:123 -> shouldOverrideUrlLoading
+    3:6:void <init>(com.shiningbrowsacademy.experts.MainActivity):128:128 -> <init>
+    11:38:boolean shouldOverrideUrlLoading(android.webkit.WebView,android.webkit.WebResourceRequest):130:130 -> shouldOverrideUrlLoading
 com.shiningbrowsacademy.experts.MainActivity$onCreate$5 -> com.shiningbrowsacademy.experts.MainActivity$onCreate$5:
 # {"id":"sourceFile","fileName":"MainActivity.kt"}
-    4:7:void <init>(com.shiningbrowsacademy.experts.MainActivity):139:139 -> <init>
-    1:17:void handleOnBackPressed():141:141 -> handleOnBackPressed
-    18:34:void handleOnBackPressed():142:142 -> handleOnBackPressed
-    35:37:void handleOnBackPressed():144:144 -> handleOnBackPressed
-    38:47:void handleOnBackPressed():145:145 -> handleOnBackPressed
-    48:51:void handleOnBackPressed():141:141 -> handleOnBackPressed
+    4:7:void <init>(com.shiningbrowsacademy.experts.MainActivity):146:146 -> <init>
+    1:17:void handleOnBackPressed():148:148 -> handleOnBackPressed
+    18:34:void handleOnBackPressed():149:149 -> handleOnBackPressed
+    35:37:void handleOnBackPressed():151:151 -> handleOnBackPressed
+    38:47:void handleOnBackPressed():152:152 -> handleOnBackPressed
+    48:51:void handleOnBackPressed():148:148 -> handleOnBackPressed
 kotlin.Lazy -> T.a:
 # {"id":"sourceFile","fileName":"Lazy.kt"}
 kotlin.LazyKt__LazyJVMKt -> R8$$REMOVED$$CLASS$$83:

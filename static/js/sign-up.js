@@ -30,6 +30,13 @@ window.addEventListener("load", async () => {
 
   let currentSignUp = null;
 
+  const updateSubmitState = () => {
+    submitButton.disabled = !form.checkValidity();
+  };
+  form.addEventListener("input", updateSubmitState);
+  form.addEventListener("change", updateSubmitState);
+  updateSubmitState();
+
   const finishAuth = async (sessionId) => {
     await Clerk.setActive({ session: sessionId });
     const token = await Clerk.session.getToken();
@@ -63,6 +70,7 @@ window.addEventListener("load", async () => {
     verifyFields.classList.toggle("hidden", step !== "verify");
     submitButton.textContent = step === "sign-up" ? "Kayıt Ol" : "Doğrula";
     clearError();
+    updateSubmitState();
   };
 
   document.getElementById("toggle-password").addEventListener("click", () => {
@@ -149,7 +157,7 @@ window.addEventListener("load", async () => {
       console.error("Clerk sign-up error:", err && err.errors ? err.errors : err);
       showError(clerkErrorMessage(err));
     } finally {
-      submitButton.disabled = false;
+      updateSubmitState();
     }
   });
 

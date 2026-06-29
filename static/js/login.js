@@ -33,6 +33,14 @@ window.addEventListener("load", async () => {
 
   let resetSignIn = null;
 
+  // ponytail: native form validation already excludes hidden/inactive step fields
+  const updateSubmitState = () => {
+    submitButton.disabled = !form.checkValidity();
+  };
+  form.addEventListener("input", updateSubmitState);
+  form.addEventListener("change", updateSubmitState);
+  updateSubmitState();
+
   const finishAuth = async (sessionId) => {
     await Clerk.setActive({ session: sessionId });
     const token = await Clerk.session.getToken();
@@ -62,20 +70,26 @@ window.addEventListener("load", async () => {
   };
 
   const startPasswordReset = async (email) => {
-    resetSignIn = await Clerk.client.signIn.create({ identifier: email });
-    const emailFactor = (resetSignIn.supportedFirstFactors || []).find(
-      (factor) => factor.strategy === "reset_password_email_code"
-    );
-    if (!emailFactor) {
-      showError("Bu hesap için şifre sıfırlama desteklenmiyor.");
+    try {
+      resetSignIn = await Clerk.client.signIn.create({ identifier: email });
+      const emailFactor = (resetSignIn.supportedFirstFactors || []).find(
+        (factor) => factor.strategy === "reset_password_email_code"
+      );
+      if (!emailFactor) {
+        showError("Bu hesap için şifre sıfırlama desteklenmiyor.");
+        return false;
+      }
+      resetSignIn = await resetSignIn.prepareFirstFactor({
+        strategy: "reset_password_email_code",
+        emailAddressId: emailFactor.emailAddressId,
+      });
+      setStep("reset-confirm");
+      return true;
+    } catch (err) {
+      console.error("Clerk password reset error:", err && err.errors ? err.errors : err);
+      showError(clerkErrorMessage(err));
       return false;
     }
-    resetSignIn = await resetSignIn.prepareFirstFactor({
-      strategy: "reset_password_email_code",
-      emailAddressId: emailFactor.emailAddressId,
-    });
-    setStep("reset-confirm");
-    return true;
   };
 
   const setStep = (step) => {
@@ -88,6 +102,7 @@ window.addEventListener("load", async () => {
     submitButton.textContent =
       step === "sign-in" ? "Giriş Yap" : step === "reset-request" ? "Kod Gönder" : "Şifreyi Güncelle";
     clearError();
+    updateSubmitState();
   };
 
   togglePasswordButton.addEventListener("click", () => {
@@ -149,7 +164,7 @@ window.addEventListener("load", async () => {
         showError(clerkErrorMessage(err));
       }
     } finally {
-      submitButton.disabled = false;
+      updateSubmitState();
     }
   });
 
