@@ -1,7 +1,7 @@
 {
   "name": "Shining Brows Uzman Portalı",
   "short_name": "SB Expert",
-  "description": "Shining Brows uzman portalı ile tüm eğitim içeriğine, diğer uzmanların bilgilerine, E-kitaba ve daha fazlasına tek tıkla erişin.",
+  "description": "Shining Brows uzman portalı ile tüm workshop içeriğine, diğer uzmanların bilgilerine, E-kitaba ve daha fazlasına tek tıkla erişin.",
   "start_url": "/login",
   "scope": "/",
   "display": "standalone",

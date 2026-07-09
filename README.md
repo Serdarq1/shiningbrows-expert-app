@@ -216,6 +216,6 @@ on workshop_live_attendance(workshop_id, room_sid, participant_identity);
 
 ### Akış özeti
 - `/login` ad soyad ile giriş; Supabase öğrenciler tablosu veya demo verisi.
-- `/dashboard` tek sayfa: sertifika, ürün adımları, kurallar, eğitim içeriği, fotoğraf yükleme, kampanyalar, workshop, hızlı bilgiler, destek ve SSS.
+- `/dashboard` tek sayfa: sertifika, ürün adımları, kurallar, workshop içeriği, fotoğraf yükleme, kampanyalar, workshop, hızlı bilgiler, destek ve SSS.
 - API uçları `/api/...` Supabase bağlantısı varsa gerçek veriyi, yoksa demo verisini döndürür.
 # shiningbrows-expert-app
