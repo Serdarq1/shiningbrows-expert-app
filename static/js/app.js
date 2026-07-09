@@ -2423,6 +2423,10 @@ async function loadExperts() {
         <td class="py-2 pr-4">${statusCell}</td>
         <td class="py-2 pr-4">${phoneLabel}</td>
         <td class="py-2 pr-4">${cityLabel}</td>
+        ${currentUserRole === "admin" ? `
+        <td class="py-2 pr-2 text-right">
+          <button type="button" class="expert-delete-btn inline-flex h-7 w-7 items-center justify-center text-red-600 hover:bg-red-50" data-expert-id="${expert.id}" title="Uzmanı sil" aria-label="Uzmanı sil">✕</button>
+        </td>` : ""}
       `;
       table.appendChild(row);
     });
@@ -2450,6 +2454,21 @@ async function loadExperts() {
           } finally {
             select.disabled = false;
           }
+        });
+      });
+      table.querySelectorAll(".expert-delete-btn").forEach((button) => {
+        const expertId = button.dataset.expertId;
+        attachDeletePopover(button, {
+          message: "Bu uzman listeden silinsin mi?",
+          position: "center",
+          onConfirm: async () => {
+            await fetchJSON(`/api/experts/${expertId}`, { method: "DELETE" });
+            showToast("Uzman silindi.", { type: "success" });
+            await loadExperts();
+          },
+          onError: () => {
+            showToast("Uzman silinemedi.", { type: "error" });
+          },
         });
       });
     }

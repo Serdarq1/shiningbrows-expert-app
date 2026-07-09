@@ -2628,6 +2628,36 @@ def update_expert_status(expert_id: str) -> Any:
     return jsonify({"ok": True, "expert_status": expert_status})
 
 
+@app.route("/api/experts/<expert_id>", methods=["DELETE"])
+def delete_expert(expert_id: str) -> Any:
+    student = get_current_student()
+    if not student:
+        return jsonify({"error": "Oturum bulunamadı"}), 401
+    if student.get("role") != "admin":
+        return jsonify({"error": "Bu işlem için yetkiniz yok."}), 403
+    if not supabase:
+        return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+    if str(student.get("id")) == str(expert_id):
+        return jsonify({"error": "Kendinizi silemezsiniz."}), 400
+
+    try:
+        response = (
+            supabase.table("shining_brows_student_database")
+            .delete()
+            .eq("id", expert_id)
+            .execute()
+        )
+        deleted = getattr(response, "data", []) or []
+    except Exception as exc:
+        print("Expert delete failed:", exc)
+        return jsonify({"error": "Uzman silinemedi."}), 500
+
+    if not deleted:
+        return jsonify({"error": "Uzman bulunamadı."}), 404
+
+    return jsonify({"ok": True})
+
+
 @app.route("/api/account/avatar", methods=["POST"])
 def update_avatar() -> Any:
     student = get_current_student()
