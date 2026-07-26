@@ -9,6 +9,7 @@ const sections = [
   "yaklasan-workshoplar",
   "canli-workshop",
   "uzmanlar",
+  "uzman-profil",
   "medya",
   "destek",
   "shining-world",
@@ -23,6 +24,7 @@ let quickTips = [];
 let currentUserRole = "student";
 let studentHasPassword = false;
 let feedPhotos = [];
+let profilePhotos = [];
 let showWinnerOnly = false;
 let pinWinner = false;
 let bookUrl = "";
@@ -55,6 +57,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupSidebar();
   setupFeedControls();
   setupFeedPhotosToggle();
+  setupExpertProfileBack();
   setupPanelShortcuts();
   setupNotificationButton();
   loadStudent();
@@ -209,7 +212,9 @@ function setupNavigation() {
   });
   if (buttons.length) {
     const initial = getInitialSection(buttons[0].dataset.target);
-    goToSection(initial, { replace: true });
+    const options = { replace: true };
+    if (initial === "uzman-profil") options.expertId = parseSectionHash().expertId;
+    goToSection(initial, options);
   }
 }
 
@@ -228,29 +233,41 @@ function setupPanelShortcuts() {
   });
 }
 
+// "#uzman-profil/12" -> { section: "uzman-profil", expertId: "12" }
+function parseSectionHash() {
+  const [section, expertId] = window.location.hash.replace("#", "").split("/");
+  return { section, expertId: expertId || null };
+}
+
 function getInitialSection(fallback) {
-  const hash = window.location.hash.replace("#", "");
-  if (sections.includes(hash)) return hash;
+  const { section } = parseSectionHash();
+  if (sections.includes(section)) return section;
   return fallback || "portal";
 }
 
 function goToSection(targetId, options = {}) {
   if (!targetId) return;
+  const expertId = options.expertId || null;
   switchSection(targetId);
-  setActiveNav(targetId);
-  const url = `#${targetId}`;
+  setActiveNav(targetId === "uzman-profil" ? "uzmanlar" : targetId);
+  const url = expertId ? `#${targetId}/${expertId}` : `#${targetId}`;
+  const state = { section: targetId, expertId };
   if (options.replace) {
-    window.history.replaceState({ section: targetId }, "", url);
+    window.history.replaceState(state, "", url);
   } else {
-    window.history.pushState({ section: targetId }, "", url);
+    window.history.pushState(state, "", url);
   }
+  if (targetId === "uzman-profil") loadExpertProfile(expertId);
 }
 
 window.addEventListener("popstate", (event) => {
-  const targetId = (event.state && event.state.section) || window.location.hash.replace("#", "");
-  if (targetId && sections.includes(targetId)) {
-    switchSection(targetId);
-    setActiveNav(targetId);
+  const fromHash = parseSectionHash();
+  const targetId = (event.state && event.state.section) || fromHash.section;
+  if (!targetId || !sections.includes(targetId)) return;
+  switchSection(targetId);
+  setActiveNav(targetId === "uzman-profil" ? "uzmanlar" : targetId);
+  if (targetId === "uzman-profil") {
+    loadExpertProfile((event.state && event.state.expertId) || fromHash.expertId);
   }
 });
 
@@ -1020,6 +1037,7 @@ function setupOrderActions() {
       Object.keys(orderCart).forEach((key) => delete orderCart[key]);
       saveCart();
       renderCart();
+      loadOrderHistory(1);
       closeCartPanel();
       closeOrderConfirm();
     } catch (err) {
@@ -2401,11 +2419,13 @@ async function loadExperts() {
     table.innerHTML = "";
     experts.forEach((expert) => {
       const row = document.createElement("tr");
-      row.className = "border-b border-gray-50";
-      const avatarUrl = expert.avatar_url || "../static/img/user-logo.png";
-      const statusLabel = formatExpertStatus(expert.expert_status);
-      const phoneLabel = expert.phone || "-";
-      const cityLabel = expert.city || "-";
+      row.className = "border-b border-gray-50 cursor-pointer hover:bg-gray-50";
+      row.dataset.expertId = expert.id;
+      const avatarUrl = escapeHTML(expert.avatar_url || "../static/img/user-logo.png");
+      const displayName = escapeHTML(toTitleCase(expert.name) || "-");
+      const statusLabel = escapeHTML(formatExpertStatus(expert.expert_status));
+      const phoneLabel = escapeHTML(expert.phone || "-");
+      const cityLabel = escapeHTML(expert.city || "-");
       const statusCell = currentUserRole === "admin"
         ? `
           <select class="expert-status-input rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-zinc-800" data-expert-id="${expert.id}">
@@ -2416,10 +2436,10 @@ async function loadExperts() {
       row.innerHTML = `
         <td class="py-2 pr-4">
           <div class="w-9 h-9 rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
-            <img src="${avatarUrl}" alt="${toTitleCase(expert.name) || "Uzman"}" class="w-full h-full object-cover">
+            <img src="${avatarUrl}" alt="${displayName}" class="w-full h-full object-cover">
           </div>
         </td>
-        <td class="py-2 pr-4 font-semibold">${toTitleCase(expert.name) || "-"}</td>
+        <td class="py-2 pr-4 font-semibold">${displayName}</td>
         <td class="py-2 pr-4">${statusCell}</td>
         <td class="py-2 pr-4">${phoneLabel}</td>
         <td class="py-2 pr-4">${cityLabel}</td>
@@ -2430,6 +2450,15 @@ async function loadExperts() {
       `;
       table.appendChild(row);
     });
+    if (!table.dataset.rowClickBound) {
+      // delegated so it survives the innerHTML rebuild loadExperts() does on every status change
+      table.addEventListener("click", (event) => {
+        if (event.target.closest("select, button")) return;
+        const row = event.target.closest("tr[data-expert-id]");
+        if (row) goToSection("uzman-profil", { expertId: row.dataset.expertId });
+      });
+      table.dataset.rowClickBound = "1";
+    }
     if (currentUserRole === "admin") {
       table.querySelectorAll(".expert-status-input").forEach((input) => {
         input.dataset.previousStatus = normalizeExpertStatusForInput(input.value);
@@ -2475,6 +2504,121 @@ async function loadExperts() {
   } catch (err) {
     table.innerHTML = '<tr><td class="py-3 text-sm text-red-500" colspan="5">Uzmanlar yüklenemedi.</td></tr>';
   }
+}
+
+async function loadExpertProfile(expertId) {
+  const body = document.getElementById("expert-profile-body");
+  if (!body) return;
+  if (!expertId) {
+    body.innerHTML = '<p class="text-sm text-zinc-500">Uzman seçilmedi.</p>';
+    return;
+  }
+  body.innerHTML = spinner({ size: 40 });
+  try {
+    const expert = await fetchJSON(`/api/experts/${encodeURIComponent(expertId)}`);
+    profilePhotos = Array.isArray(expert.photos) ? expert.photos : [];
+    body.innerHTML = buildExpertProfileHTML(expert);
+    renderProfilePosts();
+  } catch (err) {
+    body.innerHTML = `<p class="text-sm text-red-500">${escapeHTML(err && err.message ? err.message : "Uzman profili yüklenemedi.")}</p>`;
+  }
+}
+
+function buildExpertProfileHTML(expert) {
+  const displayName = toTitleCase(expert.name) || "Uzman";
+  const avatarUrl = expert.avatar_url || "../static/img/user-logo.png";
+  const rows = [
+    ["Konum", expert.city],
+    ["Workshop", expert.workshop_name],
+    ["Telefon", expert.phone],
+    ["E-posta", expert.email],
+  ].filter(([, value]) => value);
+  return `
+    <div class="flex flex-wrap items-center gap-4">
+      <div class="h-20 w-20 rounded-2xl overflow-hidden border border-gray-200 bg-gray-50">
+        <img src="${escapeHTML(avatarUrl)}" alt="${escapeHTML(displayName)}" class="h-full w-full object-cover">
+      </div>
+      <div class="space-y-1">
+        <h4 class="text-lg font-semibold text-zinc-900">${escapeHTML(displayName)}</h4>
+        <span class="inline-block px-3 py-1 rounded-full border text-xs font-semibold bg-[#fff9e8] text-[#8a6b1f] border-[#f7e3a3]">
+          ${escapeHTML(formatExpertStatus(expert.expert_status))}
+        </span>
+      </div>
+    </div>
+    ${
+      rows.length
+        ? `<dl class="grid gap-2 sm:grid-cols-2 text-sm">
+            ${rows
+              .map(
+                ([label, value]) => `
+              <div class="px-3 py-2">
+                <dt class="text-[11px] uppercase tracking-wide text-zinc-400">${label}</dt>
+                <dd class="text-zinc-800">${escapeHTML(value)}</dd>
+              </div>`
+              )
+              .join("")}
+          </dl>`
+        : ""
+    }
+    <div class="space-y-2">
+      <p class="text-xs uppercase tracking-wide text-zinc-400">Paylaşımları</p>
+      <div id="expert-profile-posts" class="grid grid-cols-3 gap-1 sm:gap-2"></div>
+    </div>
+  `;
+}
+
+function renderProfilePosts() {
+  const container = document.getElementById("expert-profile-posts");
+  if (!container) return;
+  container.innerHTML = "";
+  const posts = Array.isArray(profilePhotos) ? profilePhotos : [];
+  if (!posts.length) {
+    container.className = "";
+    container.innerHTML = '<p class="text-sm text-zinc-500">Henüz paylaşım yok.</p>';
+    return;
+  }
+  container.className = "grid grid-cols-3 gap-1 sm:gap-2";
+  posts.forEach((photo) => container.appendChild(buildProfilePostTile(photo)));
+}
+
+function buildProfilePostTile(photo) {
+  const tile = document.createElement("button");
+  tile.type = "button";
+  tile.className = "relative aspect-square overflow-hidden bg-gray-100";
+  tile.dataset.photoId = Number(photo.id);
+  const displayName = toTitleCase(photo.student_name || "Uzman");
+  const reactionTotal = Object.values(photo.reactions || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
+  const commentTotal = Array.isArray(photo.feedbacks) ? photo.feedbacks.length : 0;
+  tile.innerHTML = `
+    <img src="${escapeHTML(photo.image_url)}" alt="${escapeHTML(displayName)} paylaşımı" class="h-full w-full object-cover">
+    ${
+      photo.is_monthly_winner
+        ? '<span class="absolute left-1 top-1 rounded-full bg-green-500 px-2 py-0.5 text-[10px] font-semibold text-white">Kazanan</span>'
+        : ""
+    }
+    <div class="absolute inset-0 flex items-end justify-between bg-gradient-to-t from-black/55 via-black/0 to-black/0 p-2 text-[11px] font-semibold text-white opacity-0 transition hover:opacity-100">
+      <span>${reactionTotal} reaksiyon</span>
+      <span>${commentTotal} yorum</span>
+    </div>
+  `;
+  tile.addEventListener("click", () => {
+    goToSection("uzman-akisi");
+    requestAnimationFrame(() => {
+      const card = getFeedCard(photo.id);
+      if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  });
+  return tile;
+}
+
+function setupExpertProfileBack() {
+  const backBtn = document.getElementById("expert-profile-back");
+  if (!backBtn) return;
+  backBtn.addEventListener("click", () => {
+    // native history returns to wherever the profile was opened from
+    if (window.history.length > 1) window.history.back();
+    else goToSection("uzmanlar", { replace: true });
+  });
 }
 
 function resetWorkshopForm() {
@@ -2790,16 +2934,17 @@ async function loadOrderHistory(page = 1) {
         const customerPhone = item.student_phone || item.phone || "";
         const customerEmail = item.student_email || "";
         const customerDetails = [customerName, customerPhone, customerEmail].filter(Boolean).join(" · ");
+        const orderNumber = item.order_number || (item.id ? `SB-${String(item.id).replace(/[^a-z0-9]/gi, "").slice(-8).toUpperCase()}` : "");
         const row = document.createElement("div");
         row.className = "p-3 rounded-lg border border-gray-200 bg-white text-sm space-y-1";
         row.innerHTML = `
           <div class="flex items-center justify-between">
-            <p class="font-semibold">Sipariş</p>
+            <p class="font-semibold">Sipariş${orderNumber ? ` #${escapeHTML(orderNumber)}` : ""}</p>
             <span class="text-xs text-zinc-500">${dateLabel}</span>
           </div>
-          ${isAdminView && customerDetails ? `<div class="text-xs text-zinc-500">${customerDetails}</div>` : ""}
-          <p class="text-zinc-700">${item.order_text || "-"}</p>
-          <div class="text-xs text-zinc-500">Toplam adet: ${item.total_qty ?? "-"}</div>
+          ${isAdminView && customerDetails ? `<div class="text-xs text-zinc-500">${escapeHTML(customerDetails)}</div>` : ""}
+          <p class="text-zinc-700">${escapeHTML(item.order_text || "-")}</p>
+          <div class="text-xs text-zinc-500">Toplam adet: ${escapeHTML(item.total_qty ?? "-")}</div>
         `;
         list.appendChild(row);
       });
@@ -3043,7 +3188,10 @@ async function loadPhotos() {
             }
             showToast("Fotoğraf silindi.", { type: "success" });
             await loadPhotos();
-            await loadFeed();
+            feedPhotos = (Array.isArray(feedPhotos) ? feedPhotos : []).filter(
+              (p) => Number(p.id) !== Number(photo.id)
+            );
+            getFeedCard(photo.id)?.remove();
           },
           onError: () => {
             showToast("Fotoğraf silinemedi.", { type: "error" });
@@ -3092,198 +3240,341 @@ function renderFeed() {
     return;
   }
 
-  photos.forEach((photo) => {
-    const card = document.createElement("div");
-    card.className = "rounded-lg border border-gray-200 shadow-sm bg-white overflow-hidden";
-    const date = photo.created_at ? new Date(photo.created_at).toLocaleDateString("tr-TR") : "";
-      const displayName = toTitleCase(photo.student_name || "Uzman");
-      const initials = displayName.slice(0, 2).toUpperCase();
-      const avatarUrl = photo.student_avatar_url || photo.avatar_url || "../static/img/user-logo.png";
-    const winnerBadge =
-      photo.is_monthly_winner
-        ? '<span class="px-3 py-1 rounded-full bg-green-100 text-green-800 text-xs font-semibold border border-green-200">Bu Ayın Kazananı</span>'
-        : "";
-    card.innerHTML = `
-      <div class="flex items-center justify-between gap-3 p-3">
-          <div class="flex items-center gap-3">
-            <div class="h-10 w-10 rounded-full overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center text-sm font-semibold text-zinc-900">
-              <img src="${avatarUrl}" alt="${displayName}" class="h-full w-full object-cover" onerror="this.style.display='none'; this.parentElement.textContent='${initials}';" />
-            </div>
-            <div>
-              <p class="font-semibold text-sm text-zinc-800">${displayName}</p>
-              <p class="text-xs text-zinc-500">${date}</p>
-            </div>
-          </div>
-        ${winnerBadge}
-      </div>
-      <div class="bg-gray-100 relative">
-        ${
-          photo.is_monthly_winner
-            ? '<span class="absolute top-3 left-3 px-3 py-1 rounded-full bg-green-500 shadow text-white text-xs font-semibold shadow">Kazanan</span>'
-            : ""
-        }
-        <img src="${photo.image_url}" alt="Uzman paylaşımı" class="w-full max-h-[520px] md:max-h-[620px] object-cover">
-      </div>
-      <div class="p-3 space-y-3">
-        <div class="flex items-center gap-2 flex-wrap" data-reaction-row></div>
-        <div class="space-y-2" data-feedback-list></div>
-        <div class="space-y-2" data-moderation-block></div>
-      </div>
-    `;
-    const reactionRow = card.querySelector("[data-reaction-row]");
-    const feedbackList = card.querySelector("[data-feedback-list]");
-    const moderationBlock = card.querySelector("[data-moderation-block]");
-    const counts = photo.reactions || {};
-    FEED_REACTIONS.forEach((reaction) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      const isActive = photo.my_reaction === reaction.id;
-      const count = counts[reaction.id] || 0;
-      btn.className = [
-        "flex",
-        "items-center",
-        "gap-2",
-        "px-3",
-        "py-1.5",
-        "rounded-full",
-        "border",
-        "text-sm",
-        "transition",
-        "duration-150",
-        isActive ? "bg-gray-100 border-gray-300 text-zinc-900" : "bg-white border-gray-200 text-zinc-700 hover:border-gray-300",
-      ].join(" ");
-      btn.innerHTML = `
-        <span>${reaction.label}</span>
-        <span class="text-xs text-zinc-500">${count}</span>
-      `;
-      btn.addEventListener("click", async (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        btn.disabled = true;
-        try {
-          await sendReaction(photo.id, reaction.id);
-          applyReactionToFeedPhoto(photo.id, reaction.id);
-          renderFeed();
-          showToast("Reaksiyon kaydedildi.", { type: "success", duration: 1600 });
-        } catch (err) {
-          showToast("Reaksiyon gönderilemedi.", { type: "error" });
-        } finally {
-          btn.disabled = false;
-        }
-      });
-      reactionRow.appendChild(btn);
+  photos.forEach((photo) => feed.appendChild(buildFeedCard(photo)));
+}
+
+function getFeedCard(photoId) {
+  const selector = `[data-photo-id="${Number(photoId)}"]`;
+  return (
+    document.querySelector(`#uzman-profil:not(.hidden) ${selector}`) ||
+    document.querySelector(`#uzman-akisi:not(.hidden) ${selector}`) ||
+    document.querySelector(selector)
+  );
+}
+
+function getFeedPhoto(photoId) {
+  const activeProfile = !document.getElementById("uzman-profil")?.classList.contains("hidden");
+  const primary = activeProfile ? profilePhotos : feedPhotos;
+  const secondary = activeProfile ? feedPhotos : profilePhotos;
+  return (
+    (Array.isArray(primary) ? primary : []).find((p) => Number(p.id) === Number(photoId)) ||
+    (Array.isArray(secondary) ? secondary : []).find((p) => Number(p.id) === Number(photoId))
+  );
+}
+
+function updatePhotoCollections(photoId, updater) {
+  [feedPhotos, profilePhotos].forEach((collection) => {
+    if (!Array.isArray(collection)) return;
+    collection.forEach((photo) => {
+      if (Number(photo.id) === Number(photoId)) updater(photo);
     });
-    const feedbacks = Array.isArray(photo.feedbacks) ? photo.feedbacks : [];
-    if (feedbacks.length) {
-      const header = document.createElement("p");
-      header.className = "text-xs uppercase tracking-wide text-zinc-400";
-      header.textContent = "Feedbackler";
-      feedbackList.appendChild(header);
-      feedbacks.forEach((fb) => {
-        const row = document.createElement("div");
-        const fbDate = fb.created_at ? new Date(fb.created_at).toLocaleDateString("tr-TR") : "";
-        row.className = "p-2 rounded-lg bg-gray-50 border border-gray-200";
-        const feedbackName = toTitleCase(fb.student_name || "Uzman");
-        row.innerHTML = `
-          <p class="text-xs font-semibold text-zinc-700">${feedbackName} <span class="text-[11px] text-zinc-400">${fbDate}</span></p>
-          <p class="text-sm text-zinc-700">${fb.feedback}</p>
-        `;
-        feedbackList.appendChild(row);
-      });
-    }
-    if (!isGuestUser) {
-      const feedbackWrapper = document.createElement("div");
-      feedbackWrapper.className = "space-y-2";
-      const feedbackInputId = `feedback-${photo.id}`;
-      feedbackWrapper.innerHTML = `
-        <label for="${feedbackInputId}" class="text-xs text-zinc-500">Feedback bırak</label>
-        <div class="flex gap-2">
-          <input id="${feedbackInputId}" type="text" maxlength="280" value=""
-            class="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400" placeholder="Gözlemini yaz">
-          <button type="button" class="px-3 py-2 rounded-lg bg-zinc-900 text-white text-sm font-semibold hover:bg-zinc-800">Gönder</button>
-        </div>
-      `;
-      const sendBtn = feedbackWrapper.querySelector("button");
-      const input = feedbackWrapper.querySelector("input");
-      sendBtn.addEventListener("click", async () => {
-        const feedback = input.value.trim();
-        if (!feedback) return;
-        sendBtn.disabled = true;
-        try {
-          await sendFeedback(photo.id, feedback);
-          await loadFeed();
-        } catch (err) {
-          alert("Feedback kaydedilemedi.");
-        } finally {
-          sendBtn.disabled = false;
-        }
-      });
-      moderationBlock.appendChild(feedbackWrapper);
-    }
-    if (currentUserRole === "admin") {
-      const winnerBtn = document.createElement("button");
-      winnerBtn.type = "button";
-      winnerBtn.className = [
-        "w-full",
-        "px-3",
-        "py-2",
-        "rounded-lg",
-        photo.is_monthly_winner ? "bg-zinc-900 text-white border border-zinc-900" : "bg-white border border-gray-200 text-zinc-700 hover:border-gray-300",
-        "text-sm",
-        "font-semibold",
-        "transition",
-        "duration-150",
-      ].join(" ");
-      winnerBtn.textContent = photo.is_monthly_winner ? "Bu Ayın Kazananı" : "Aylık Kazanan Yap";
-      winnerBtn.addEventListener("click", async () => {
-        winnerBtn.disabled = true;
-        try {
-          await setMonthlyWinner(photo.id);
-          await loadFeed();
-        } catch (err) {
-          alert("Kazanan seçilemedi.");
-        } finally {
-          winnerBtn.disabled = false;
-        }
-      });
-      moderationBlock.appendChild(winnerBtn);
-    }
-    feed.appendChild(card);
   });
 }
 
+function buildFeedCard(photo) {
+  const card = document.createElement("div");
+  card.className = "rounded-lg border border-gray-200 shadow-sm bg-white overflow-hidden";
+  card.dataset.photoId = Number(photo.id);
+  const date = photo.created_at ? new Date(photo.created_at).toLocaleDateString("tr-TR") : "";
+  const displayName = toTitleCase(photo.student_name || "Uzman");
+  const initials = displayName.slice(0, 2).toUpperCase();
+  const avatarUrl = photo.student_avatar_url || photo.avatar_url || "../static/img/user-logo.png";
+  const winnerBadge =
+    photo.is_monthly_winner
+      ? '<span class="px-3 py-1 rounded-full bg-green-100 text-green-800 text-xs font-semibold border border-green-200">Bu Ayın Kazananı</span>'
+      : "";
+  card.innerHTML = `
+    <div class="flex items-center justify-between gap-3 p-3">
+      <button type="button" data-expert-open="${Number(photo.student_id)}" class="flex items-center gap-3 text-left rounded-lg transition hover:bg-gray-50">
+        <div class="h-10 w-10 rounded-full overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center text-sm font-semibold text-zinc-900">
+          <img src="${escapeHTML(avatarUrl)}" alt="${escapeHTML(displayName)}" class="h-full w-full object-cover" data-avatar-img />
+        </div>
+        <div>
+          <p class="font-semibold text-sm text-zinc-800">${escapeHTML(displayName)}</p>
+          <p class="text-xs text-zinc-500">${date}</p>
+        </div>
+      </button>
+      ${winnerBadge}
+    </div>
+    <div class="bg-gray-100 relative">
+      ${
+        photo.is_monthly_winner
+          ? '<span class="absolute top-3 left-3 px-3 py-1 rounded-full bg-green-500 shadow text-white text-xs font-semibold">Kazanan</span>'
+          : ""
+      }
+      <img src="${escapeHTML(photo.image_url)}" alt="Uzman paylaşımı" class="w-full max-h-[520px] md:max-h-[620px] object-cover">
+    </div>
+    <div class="p-3 space-y-3">
+      <div class="flex items-center gap-2 flex-wrap" data-reaction-row></div>
+      <div class="space-y-2" data-feedback-list></div>
+      <div class="space-y-2" data-moderation-block></div>
+    </div>
+  `;
+
+  const avatarImg = card.querySelector("[data-avatar-img]");
+  if (avatarImg) {
+    avatarImg.addEventListener("error", () => {
+      avatarImg.style.display = "none";
+      if (avatarImg.parentElement) avatarImg.parentElement.textContent = initials;
+    });
+  }
+  const expertBtn = card.querySelector("[data-expert-open]");
+  if (expertBtn && photo.student_id) {
+    expertBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      goToSection("uzman-profil", { expertId: photo.student_id });
+    });
+  }
+
+  buildReactionRow(card, photo);
+
+  const feedbackList = card.querySelector("[data-feedback-list]");
+  nestFeedbacks(photo.feedbacks).forEach((fb) => {
+    const node = buildCommentNode(fb, photo.id);
+    const replyHost = node.querySelector("[data-replies]");
+    (fb.replies || []).forEach((reply) => {
+      if (replyHost) replyHost.appendChild(buildCommentNode(reply, photo.id, true));
+    });
+    feedbackList.appendChild(node);
+  });
+  if (feedbackList.childElementCount) ensureFeedbackHeader(feedbackList);
+
+  const moderationBlock = card.querySelector("[data-moderation-block]");
+  if (!isGuestUser) {
+    moderationBlock.appendChild(buildCommentForm(photo.id));
+  }
+  if (currentUserRole === "admin") {
+    const winnerBtn = document.createElement("button");
+    winnerBtn.type = "button";
+    winnerBtn.className = [
+      "w-full",
+      "px-3",
+      "py-2",
+      "rounded-lg",
+      photo.is_monthly_winner ? "bg-zinc-900 text-white border border-zinc-900" : "bg-white border border-gray-200 text-zinc-700 hover:border-gray-300",
+      "text-sm",
+      "font-semibold",
+      "transition",
+      "duration-150",
+    ].join(" ");
+    winnerBtn.textContent = photo.is_monthly_winner ? "Bu Ayın Kazananı" : "Aylık Kazanan Yap";
+    winnerBtn.addEventListener("click", async () => {
+      winnerBtn.disabled = true;
+      try {
+        await setMonthlyWinner(photo.id);
+        [feedPhotos, profilePhotos].forEach((collection) => {
+          if (!Array.isArray(collection)) return;
+          collection.forEach((p) => {
+            p.is_monthly_winner = false;
+          });
+        });
+        updatePhotoCollections(photo.id, (p) => {
+          p.is_monthly_winner = true;
+        });
+        renderFeed();
+        renderProfilePosts();
+      } catch (err) {
+        showToast("Kazanan seçilemedi.", { type: "error" });
+        winnerBtn.disabled = false;
+      }
+    });
+    moderationBlock.appendChild(winnerBtn);
+  }
+
+  return card;
+}
+
+function buildReactionRow(card, photo) {
+  const reactionRow = card.querySelector("[data-reaction-row]");
+  if (!reactionRow) return;
+  reactionRow.innerHTML = "";
+  const counts = photo.reactions || {};
+  FEED_REACTIONS.forEach((reaction) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    const isActive = photo.my_reaction === reaction.id;
+    const count = counts[reaction.id] || 0;
+    btn.className = [
+      "flex",
+      "items-center",
+      "gap-2",
+      "px-3",
+      "py-1.5",
+      "rounded-full",
+      "border",
+      "text-sm",
+      "transition",
+      "duration-150",
+      isActive ? "bg-gray-100 border-gray-300 text-zinc-900" : "bg-white border-gray-200 text-zinc-700 hover:border-gray-300",
+    ].join(" ");
+    btn.innerHTML = `
+      <span>${reaction.label}</span>
+      <span class="text-xs text-zinc-500">${count}</span>
+    `;
+    btn.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      btn.disabled = true;
+      try {
+        const state = await sendReaction(photo.id, reaction.id);
+        patchReactions(photo.id, state);
+        showToast("Reaksiyon kaydedildi.", { type: "success", duration: 1600 });
+      } catch (err) {
+        showToast("Reaksiyon gönderilemedi.", { type: "error" });
+        btn.disabled = false;
+      }
+    });
+    reactionRow.appendChild(btn);
+  });
+}
+
+function patchReactions(photoId, state) {
+  if (!state) return;
+  updatePhotoCollections(photoId, (photo) => {
+    photo.reactions = state.reactions || {};
+    photo.my_reaction = state.my_reaction || null;
+  });
+  document.querySelectorAll(`[data-photo-id="${Number(photoId)}"]`).forEach((card) => {
+    const photo = getFeedPhoto(photoId);
+    if (photo) buildReactionRow(card, photo);
+  });
+}
+
+// flat rows (created_at desc) -> top-level comments with their replies oldest-first
+function nestFeedbacks(feedbacks) {
+  const rows = Array.isArray(feedbacks) ? feedbacks : [];
+  const tops = [];
+  const byId = new Map();
+  rows.forEach((fb) => {
+    if (fb.parent_id) return;
+    const node = { ...fb, replies: [] };
+    byId.set(String(fb.id), node);
+    tops.push(node);
+  });
+  rows.forEach((fb) => {
+    if (!fb.parent_id) return;
+    const parent = byId.get(String(fb.parent_id));
+    if (parent) parent.replies.push(fb);
+    else tops.push({ ...fb, replies: [] });
+  });
+  tops.forEach((top) => top.replies.reverse());
+  return tops;
+}
+
+function ensureFeedbackHeader(feedbackList) {
+  if (feedbackList.querySelector("[data-feedback-header]")) return;
+  const header = document.createElement("p");
+  header.className = "text-xs uppercase tracking-wide text-zinc-400";
+  header.setAttribute("data-feedback-header", "");
+  header.textContent = "Feedbackler";
+  feedbackList.prepend(header);
+}
+
+function buildCommentNode(fb, photoId, isReply = false) {
+  const node = document.createElement("div");
+  node.dataset.commentId = Number(fb.id);
+  node.className = isReply
+    ? "p-2 rounded-lg bg-white border border-gray-200"
+    : "p-2 rounded-lg bg-gray-50 border border-gray-200";
+  const fbDate = fb.created_at ? new Date(fb.created_at).toLocaleDateString("tr-TR") : "";
+  const feedbackName = toTitleCase(fb.student_name || "Uzman");
+  const canReply = !isReply && !isGuestUser;
+  node.innerHTML = `
+    <p class="text-xs font-semibold text-zinc-700">${escapeHTML(feedbackName)} <span class="text-[11px] text-zinc-400">${fbDate}</span></p>
+    <p class="text-sm text-zinc-700">${escapeHTML(fb.feedback)}</p>
+    ${canReply ? '<button type="button" data-reply-btn class="mt-1 text-[11px] font-semibold text-gold hover:underline">Yanıtla</button>' : ""}
+    ${isReply ? "" : '<div data-replies class="mt-2 space-y-2 border-l border-gray-200 pl-3 empty:hidden empty:mt-0"></div>'}
+    ${canReply ? '<div data-reply-form class="mt-2 hidden"></div>' : ""}
+  `;
+  if (canReply) {
+    const replyBtn = node.querySelector("[data-reply-btn]");
+    const replyForm = node.querySelector("[data-reply-form]");
+    replyBtn.addEventListener("click", () => {
+      if (!replyForm.childElementCount) {
+        replyForm.appendChild(buildCommentForm(photoId, fb.id));
+      }
+      replyForm.classList.toggle("hidden");
+      if (!replyForm.classList.contains("hidden")) {
+        replyForm.querySelector("input")?.focus();
+      }
+    });
+  }
+  return node;
+}
+
+function buildCommentForm(photoId, parentId = null) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "space-y-2";
+  const inputId = parentId ? `reply-${parentId}` : `feedback-${photoId}`;
+  wrapper.innerHTML = `
+    ${parentId ? "" : `<label for="${inputId}" class="text-xs text-zinc-500">Feedback bırak</label>`}
+    <div class="flex gap-2">
+      <input id="${inputId}" type="text" maxlength="280" value=""
+        class="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400" placeholder="${parentId ? "Yanıtını yaz" : "Gözlemini yaz"}">
+      <button type="button" class="px-3 py-2 rounded-lg bg-zinc-900 text-white text-sm font-semibold hover:bg-zinc-800">${parentId ? "Yanıtla" : "Gönder"}</button>
+    </div>
+  `;
+  const sendBtn = wrapper.querySelector("button");
+  const input = wrapper.querySelector("input");
+  const submit = async () => {
+    const feedback = input.value.trim();
+    if (!feedback) return;
+    sendBtn.disabled = true;
+    try {
+      const comment = await sendFeedback(photoId, feedback, parentId);
+      appendComment(photoId, comment);
+      input.value = "";
+      if (parentId && wrapper.parentElement) wrapper.parentElement.classList.add("hidden");
+    } catch (err) {
+      showToast(err && err.message ? err.message : "Feedback kaydedilemedi.", { type: "error" });
+    } finally {
+      sendBtn.disabled = false;
+    }
+  };
+  sendBtn.addEventListener("click", submit);
+  input.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    submit();
+  });
+  return wrapper;
+}
+
+function appendComment(photoId, comment) {
+  if (!comment) return;
+  updatePhotoCollections(photoId, (photo) => {
+    photo.feedbacks = Array.isArray(photo.feedbacks) ? photo.feedbacks : [];
+    photo.feedbacks.unshift(comment);
+  });
+  const card = getFeedCard(photoId);
+  if (!card) return;
+  if (comment.parent_id) {
+    const host = card.querySelector(`[data-comment-id="${Number(comment.parent_id)}"] [data-replies]`);
+    if (host) host.appendChild(buildCommentNode(comment, photoId, true));
+    return;
+  }
+  const feedbackList = card.querySelector("[data-feedback-list]");
+  if (!feedbackList) return;
+  ensureFeedbackHeader(feedbackList);
+  feedbackList.querySelector("[data-feedback-header]").after(buildCommentNode(comment, photoId));
+}
+
 async function sendReaction(photoId, reaction) {
-  if (!photoId || !reaction) return;
-  await fetchJSON("/api/photos/reaction", {
+  if (!photoId || !reaction) return null;
+  return fetchJSON("/api/photos/reaction", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ photo_id: photoId, reaction }),
   });
 }
 
-function applyReactionToFeedPhoto(photoId, reaction) {
-  const targetId = Number(photoId);
-  feedPhotos = (Array.isArray(feedPhotos) ? feedPhotos : []).map((photo) => {
-    if (Number(photo.id) !== targetId) return photo;
-    const nextPhoto = { ...photo };
-    const nextReactions = { ...(photo.reactions || {}) };
-    const previousReaction = photo.my_reaction;
-    if (previousReaction && nextReactions[previousReaction]) {
-      nextReactions[previousReaction] = Math.max(0, nextReactions[previousReaction] - 1);
-    }
-    nextReactions[reaction] = (nextReactions[reaction] || 0) + 1;
-    nextPhoto.reactions = nextReactions;
-    nextPhoto.my_reaction = reaction;
-    return nextPhoto;
-  });
-}
-
-async function sendFeedback(photoId, feedback) {
-  await fetchJSON("/api/photos/feedback", {
+async function sendFeedback(photoId, feedback, parentId = null) {
+  const result = await fetchJSON("/api/photos/feedback", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ photo_id: photoId, feedback }),
+    body: JSON.stringify({ photo_id: photoId, feedback, parent_id: parentId }),
   });
+  return (result && result.comment) || null;
 }
 
 async function setMonthlyWinner(photoId) {

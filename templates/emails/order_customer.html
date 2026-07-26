@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Siparişiniz alındı</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f6f6f4;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f6f6f4;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px; max-width:100%; background-color:#ffffff; border:1px solid #eee7d3; border-radius:12px;">
+
+          <tr>
+            <td style="padding:32px 32px 0 32px;">
+              <img src="{{ logo_url }}" alt="Shining Brows Academy" width="120" style="display:block; border:0; width:120px; height:auto;">
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 32px 0 32px; font-family:Georgia,'Times New Roman',serif; font-size:24px; line-height:32px; color:#0f172a;">
+              Siparişiniz alındı!
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 32px 0 32px; font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:22px; color:#5b6472;">
+              Merhaba {{ customer_name }}, siparişinizi aldık. Detaylar aşağıda.
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 32px 0 32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding:0 8px 6px 0; font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#0f172a; font-weight:bold;">Sipariş No:</td>
+                  <td style="padding:0 0 6px 0; font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#5b6472;">{{ order_id }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:0 8px 6px 0; font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#0f172a; font-weight:bold;">Tarih:</td>
+                  <td style="padding:0 0 6px 0; font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#5b6472;">{{ order_date }}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 32px 0 32px;">
+              <div style="height:1px; background-color:#eceae4; line-height:1px; font-size:0;">&nbsp;</div>
+            </td>
+          </tr>
+
+          {% for item in items %}
+          <tr>
+            <td style="padding:14px 32px 0 32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td style="font-family:Helvetica,Arial,sans-serif; font-size:15px; color:#0f172a; font-weight:bold;">
+                    {{ item.name }} &times; {{ item.qty }}
+                  </td>
+                  <td align="right" style="font-family:Helvetica,Arial,sans-serif; font-size:15px; color:#0f172a; font-weight:bold; white-space:nowrap;">
+                    {{ item.line_total_text }}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-top:2px; font-family:Helvetica,Arial,sans-serif; font-size:12px; color:#a0a6b0;">
+                    Birim: {{ item.unit_price_text }}
+                  </td>
+                  <td></td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:14px 32px 0 32px;">
+              <div style="height:1px; background-color:#eceae4; line-height:1px; font-size:0;">&nbsp;</div>
+            </td>
+          </tr>
+          {% endfor %}
+
+          <tr>
+            <td style="padding:16px 32px 0 32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td style="font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#5b6472;">Ara Toplam</td>
+                  <td align="right" style="font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#5b6472; white-space:nowrap;">{{ subtotal_text }}</td>
+                </tr>
+                <tr>
+                  <td style="padding-top:8px; font-family:Helvetica,Arial,sans-serif; font-size:16px; color:#0f172a; font-weight:bold;">Toplam</td>
+                  <td align="right" style="padding-top:8px; font-family:Helvetica,Arial,sans-serif; font-size:16px; color:#0f172a; font-weight:bold; white-space:nowrap;">{{ total_text }}</td>
+                </tr>
+                <tr>
+                  <td style="padding-top:6px; font-family:Helvetica,Arial,sans-serif; font-size:13px; color:#a0a6b0;">Toplam adet</td>
+                  <td align="right" style="padding-top:6px; font-family:Helvetica,Arial,sans-serif; font-size:13px; color:#a0a6b0;">{{ total_qty }}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 32px 0 32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#fff9e8; border-radius:8px;">
+                <tr>
+                  <td style="padding:14px 16px; font-family:Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#6b5a2a;">
+                    Sipariş onayından sonra size WhatsApp üzerinden Mail-order linki gönderilecektir.<br>
+                    Shining Brows ile güzellikte fark yaratın.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 32px 0 32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td align="center" bgcolor="#caa24a" style="background-color:#caa24a; border-radius:8px;">
+                    <a href="{{ cta_url }}" style="display:block; padding:14px 20px; font-family:Helvetica,Arial,sans-serif; font-size:15px; font-weight:bold; color:#ffffff; text-decoration:none;">
+                      Siparişlerimi Görüntüle
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 32px 32px 32px; font-family:Helvetica,Arial,sans-serif; font-size:11px; line-height:18px; color:#a0a6b0;">
+              Shining Brows Academy · Bu e-posta sipariş onayınız için otomatik olarak gönderilmiştir.
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

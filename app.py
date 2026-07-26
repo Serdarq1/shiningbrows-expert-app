@@ -107,6 +107,11 @@ CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE", "")
 CLERK_API_VERSION = os.getenv("CLERK_API_VERSION", "")
 TWILIO_KRISP_ASSETS_PATH = os.getenv("TWILIO_KRISP_ASSETS_PATH", "").strip()
 
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
+RESEND_FROM = os.getenv("RESEND_FROM", "Shining Brows Academy <no-reply@shiningbrowsacademy.com>").strip()
+ADMIN_ORDER_EMAIL = os.getenv("ADMIN_ORDER_EMAIL", "guzideacademy@gmail.com").strip()
+APP_BASE_URL = os.getenv("APP_BASE_URL", "https://experts.shiningbrowsacademy.com").rstrip("/")
+
 supabase: Optional[Client] = None
 supabase_key = SUPABASE_SERVICE_KEY or SUPABASE_KEY
 if SUPABASE_URL and supabase_key and create_client:
@@ -152,6 +157,7 @@ def build_storage_url(path: str, bucket: str) -> Optional[str]:
         return path
     if not supabase:
         return None
+    signed_error: Optional[Exception] = None
     try:
         resp = supabase.storage.from_(bucket).create_signed_url(path, 60 * 60 * 24 * 7)
         if isinstance(resp, dict):
@@ -172,7 +178,7 @@ def build_storage_url(path: str, bucket: str) -> Optional[str]:
         if url:
             return url
     except Exception as exc:
-        print("Signed URL generation failed:", exc)
+        signed_error = exc
 
     try:
         public = supabase.storage.from_(bucket).get_public_url(path)
@@ -181,6 +187,8 @@ def build_storage_url(path: str, bucket: str) -> Optional[str]:
     except Exception as exc:
         print("Public URL fallback failed:", exc)
 
+    if signed_error:
+        print("Signed URL generation failed:", signed_error)
     return None
 
 
@@ -288,7 +296,11 @@ def _mux_request(method: str, path: str, body: Optional[dict] = None) -> dict:
 
 
 def _mux_signed_token(playback_id: str, expiry_seconds: int = 86400) -> str:
-    private_key_pem = base64.b64decode(MUX_SIGNING_PRIVATE_KEY).decode()
+    raw_key = MUX_SIGNING_PRIVATE_KEY.replace("\\n", "\n").strip()
+    if raw_key.startswith("-----BEGIN"):
+        private_key_pem = raw_key
+    else:
+        private_key_pem = base64.b64decode(raw_key).decode()
     now = int(time.time())
     return jwt.encode(
         {"sub": playback_id, "aud": "v", "exp": now + expiry_seconds, "kid": MUX_SIGNING_KEY_ID},
@@ -795,6 +807,199 @@ def api_support() -> Any:
 
 # ---------- Orders ----------
 
+def send_resend_email(to: str, subject: str, html: str) -> Dict[str, Any]:
+    """Send one email through Resend. Logs and returns status; never raises."""
+    status: Dict[str, Any] = {"ok": False, "to": to or "", "subject": subject}
+    if not RESEND_API_KEY:
+        print("Resend skipped (no RESEND_API_KEY):", subject)
+        status["error"] = "missing_api_key"
+        return status
+    if not to:
+        print("Resend skipped (no recipient):", subject)
+        status["error"] = "missing_recipient"
+        return status
+    payload = json.dumps({"from": RESEND_FROM, "to": [to], "subject": subject, "html": html}).encode()
+    req = Request(
+        "https://api.resend.com/emails",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+            "User-Agent": "shining-brows-experts/1.0",
+        },
+        method="POST",
+    )
+    try:
+        # timeout is mandatory: this runs inline in the order request
+        with urlopen(req, timeout=10) as resp:
+            response_body = resp.read().decode("utf-8", "replace")
+            response_json = json.loads(response_body) if response_body else {}
+            status.update({"ok": True, "id": response_json.get("id"), "status_code": resp.status})
+            print(f"Resend email sent to {to}: {subject} ({status.get('id') or resp.status})")
+            return status
+    except HTTPError as exc:
+        body = ""
+        try:
+            body = exc.read().decode("utf-8", "replace")
+        except Exception:
+            pass
+        print(f"Resend email failed ({exc.code}) to {to}:", body)
+        status.update({"status_code": exc.code, "error": body or str(exc)})
+        return status
+    except Exception as exc:
+        print(f"Resend email failed to {to}:", exc)
+        status["error"] = str(exc)
+        return status
+
+
+def _parse_price(value: Any) -> Optional[float]:
+    """products.price may be numeric or text ('1.250,00 ₺'); return None when unusable."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    cleaned = re.sub(r"[^\d,.\-]", "", str(value)).strip()
+    if not cleaned:
+        return None
+    if "," in cleaned and "." in cleaned:
+        cleaned = cleaned.replace(".", "").replace(",", ".")
+    elif "," in cleaned:
+        cleaned = cleaned.replace(",", ".")
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def format_try(value: Optional[float]) -> str:
+    if value is None:
+        return "-"
+    formatted = f"{value:,.2f}".replace(",", " ").replace(".", ",").replace(" ", ".")
+    return f"{formatted} ₺"
+
+
+def format_order_number(order_id: Any) -> str:
+    if order_id is None:
+        return "-"
+    raw = str(order_id).strip()
+    if not raw:
+        return "-"
+    compact = re.sub(r"[^A-Za-z0-9]", "", raw).upper()
+    if not compact:
+        return raw.upper()
+    return f"SB-{compact[-8:]}"
+
+
+def price_order_items(items: List[Dict[str, Any]]) -> tuple:
+    """Resolve each line's name and unit price from the products table, never from the client."""
+    rows = [item for item in items if isinstance(item, dict)]
+    product_map: Dict[str, Dict[str, Any]] = {}
+    product_ids = [item.get("product_id") for item in rows if item.get("product_id") is not None]
+    if product_ids and supabase:
+        try:
+            response = (
+                supabase.table("products")
+                .select("id,name,price")
+                .in_("id", product_ids)
+                .execute()
+            )
+            for row in getattr(response, "data", []) or []:
+                product_map[str(row.get("id"))] = row
+        except Exception as exc:
+            print("Product price lookup failed:", exc)
+
+    priced: List[Dict[str, Any]] = []
+    subtotal = 0.0
+    for item in rows:
+        try:
+            qty = max(1, int(item.get("qty") or 1))
+        except (TypeError, ValueError):
+            qty = 1
+        product = product_map.get(str(item.get("product_id")))
+        if product is None:
+            print("Unknown product in order:", item.get("product_id"))
+            unit_price = None
+            name = item.get("name") or "Ürün"
+        else:
+            unit_price = _parse_price(product.get("price"))
+            name = product.get("name") or item.get("name") or "Ürün"
+        line_total = unit_price * qty if unit_price is not None else None
+        if line_total is not None:
+            subtotal += line_total
+        priced.append(
+            {
+                "product_id": item.get("product_id"),
+                "name": name,
+                "qty": qty,
+                "unit_price": unit_price,
+                "line_total": line_total,
+            }
+        )
+    return priced, subtotal
+
+
+def send_order_emails(
+    order_id: Any,
+    student: Dict[str, Any],
+    items: List[Dict[str, Any]],
+    subtotal: float,
+    total_qty: int,
+) -> Dict[str, Any]:
+    """Customer receipt + admin notification. Never raises; email must not fail an order."""
+    result: Dict[str, Any] = {"customer": {"ok": False}, "admin": {"ok": False}}
+    try:
+        context = {
+            "order_id": format_order_number(order_id),
+            "raw_order_id": order_id if order_id is not None else "-",
+            "order_date": datetime.now(UTC).strftime("%d.%m.%Y %H:%M"),
+            "customer_name": student.get("name") or "-",
+            "customer_email": student.get("email") or "-",
+            "customer_phone": student.get("phone") or "-",
+            "items": [
+                {
+                    "name": item["name"],
+                    "qty": item["qty"],
+                    "unit_price_text": format_try(item["unit_price"]),
+                    "line_total_text": format_try(item["line_total"]),
+                }
+                for item in items
+            ],
+            "subtotal_text": format_try(subtotal),
+            "total_text": format_try(subtotal),
+            "total_qty": total_qty,
+            "cta_url": f"{APP_BASE_URL}/dashboard#urunler",
+            "logo_url": f"{APP_BASE_URL}/static/img/sb-logo.png",
+        }
+    except Exception as exc:
+        print("Order email context build failed:", exc)
+        result["error"] = str(exc)
+        return result
+
+    try:
+        html = render_template("emails/order_customer.html", **context)
+        result["customer"] = send_resend_email(
+            student.get("email") or "",
+            f"Siparişiniz alındı - #{context['order_id']}",
+            html,
+        )
+    except Exception as exc:
+        print("Customer order email failed:", exc)
+        result["customer"] = {"ok": False, "error": str(exc)}
+
+    try:
+        html = render_template("emails/order_admin.html", **context)
+        result["admin"] = send_resend_email(
+            ADMIN_ORDER_EMAIL,
+            f"Yeni sipariş #{context['order_id']} - {context['customer_name']}",
+            html,
+        )
+    except Exception as exc:
+        print("Admin order email failed:", exc)
+        result["admin"] = {"ok": False, "error": str(exc)}
+
+    return result
+
+
 @app.route("/api/orders", methods=["POST", "GET"])
 def api_orders() -> Any:
     if request.method == "GET":
@@ -827,6 +1032,8 @@ def api_orders() -> Any:
                 query = query.eq("student_id", student["id"])
             response = query.execute()
             items = getattr(response, "data", []) or []
+            for item in items:
+                item["order_number"] = format_order_number(item.get("id"))
             if is_admin and items:
                 student_ids = {item.get("student_id") for item in items if item.get("student_id") is not None}
                 if student_ids:
@@ -867,8 +1074,6 @@ def api_orders() -> Any:
     total_qty = payload.get("total_qty")
     if not order:
         return jsonify({"error": "Sipariş içeriği gerekli."}), 400
-    if TwilioClient is None:
-        return jsonify({"error": "SMS servisi yapılandırılmadı."}), 500
     if not supabase:
         return jsonify({"error": "Supabase yapılandırması eksik."}), 500
 
@@ -876,8 +1081,6 @@ def api_orders() -> Any:
     auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
     from_sms = os.getenv("TWILIO_SMS_NUMBER", "")
     admin_phone = os.getenv("ADMIN_ORDER_PHONE", "+905544610207")
-    if not account_sid or not auth_token or not from_sms:
-        return jsonify({"error": "SMS servis bilgileri eksik."}), 500
 
     if total_qty is None:
         try:
@@ -891,6 +1094,9 @@ def api_orders() -> Any:
         f"Toplam adet: {total_qty}.\n"
         "Shining Brows ile güzellikte fark yaratın."
     )
+    # prices come from the products table, never from the client payload
+    items, subtotal = price_order_items(items)
+
     try:
         order_record = {
             "student_id": student["id"],
@@ -902,10 +1108,19 @@ def api_orders() -> Any:
             "notes": None,
             "total_qty": total_qty,
         }
-        supabase.table("orders").insert(order_record).execute()
+        inserted = getattr(supabase.table("orders").insert(order_record).execute(), "data", []) or []
+        order_id = inserted[0].get("id") if inserted else None
+        order_number = format_order_number(order_id)
     except Exception as exc:
         print("Order insert failed:", exc)
         return jsonify({"error": "Sipariş kaydedilemedi."}), 500
+
+    # order is saved; everything below is best-effort notification
+    email_status = send_order_emails(order_id, student, items, subtotal, total_qty)
+
+    if TwilioClient is None or not account_sid or not auth_token or not from_sms:
+        print("Order SMS skipped: Twilio not configured")
+        return jsonify({"ok": True, "order_id": order_id, "order_number": order_number, "sms": False, "email": email_status})
 
     try:
         client = TwilioClient(account_sid, auth_token)
@@ -924,10 +1139,11 @@ def api_orders() -> Any:
             to=admin_phone,
             body=admin_body,
         )
-        return jsonify({"ok": True, "sid": message.sid})
+        return jsonify({"ok": True, "order_id": order_id, "order_number": order_number, "sms": True, "sid": message.sid, "email": email_status})
     except Exception as exc:
+        # The order row already exists; a 500 here made the client keep the cart and re-submit.
         print("Order SMS failed:", exc)
-        return jsonify({"error": "SMS gönderilemedi."}), 500
+        return jsonify({"ok": True, "order_id": order_id, "order_number": order_number, "sms": False, "email": email_status})
 
 # ---------- Books ----------
 
@@ -1835,6 +2051,14 @@ def api_photos_feed() -> Any:
         print("Photo feed fetch failed:", exc)
         return jsonify({"error": "Fotoğraf akışı alınamadı."}), 500
 
+    return jsonify(enrich_photo_posts(photos, student, is_guest))
+
+
+def enrich_photo_posts(
+    photos: List[Dict[str, Any]],
+    student: Optional[Dict[str, Any]],
+    is_guest: bool,
+) -> List[Dict[str, Any]]:
     photo_ids = [p.get("id") for p in photos if p.get("id") is not None]
     reaction_counts: Dict[int, Dict[str, int]] = {}
     my_reactions: Dict[int, str] = {}
@@ -1863,7 +2087,11 @@ def api_photos_feed() -> Any:
         try:
             feedback_response = (
                 supabase.table("photo_feedbacks")
-                .select("id,photo_id,student_id,feedback,created_at")
+                .select(
+                    "id,photo_id,student_id,feedback,created_at,parent_id"
+                    if feedback_has_parent()
+                    else "id,photo_id,student_id,feedback,created_at"
+                )
                 .in_("photo_id", photo_ids)
                 .order("created_at", desc=True)
                 .execute()
@@ -1934,7 +2162,58 @@ def api_photos_feed() -> Any:
     except Exception as exc:
         print("Student lookup failed:", exc)
 
-    return jsonify(photos)
+    return photos
+
+
+_HAS_FEEDBACK_PARENT: Optional[bool] = None
+
+
+def feedback_has_parent() -> bool:
+    """Whether the photo_feedbacks.parent_id migration has been applied.
+
+    Probed once per process, so a fresh deploy can't break plain comments if the
+    migration hasn't run yet. Restart the app after applying it to pick up replies.
+    """
+    global _HAS_FEEDBACK_PARENT
+    if _HAS_FEEDBACK_PARENT is None:
+        try:
+            supabase.table("photo_feedbacks").select("parent_id").limit(1).execute()
+            _HAS_FEEDBACK_PARENT = True
+        except Exception:
+            print("photo_feedbacks.parent_id missing; replies disabled until the migration runs")
+            _HAS_FEEDBACK_PARENT = False
+    return _HAS_FEEDBACK_PARENT
+
+
+def _reaction_state(photo_id: int, student_id: Optional[int]) -> Dict[str, Any]:
+    """Authoritative reaction counts + my_reaction for one photo, guest session included."""
+    counts: Dict[str, int] = {}
+    mine: Optional[str] = None
+    try:
+        response = (
+            supabase.table("photo_reactions")
+            .select("student_id,reaction")
+            .eq("photo_id", photo_id)
+            .execute()
+        )
+        for row in getattr(response, "data", []) or []:
+            kind = row.get("reaction")
+            if kind not in ALLOWED_REACTIONS:
+                continue
+            counts[kind] = counts.get(kind, 0) + 1
+            if student_id is not None and row.get("student_id") == student_id:
+                mine = kind
+    except Exception as exc:
+        print("Reaction state fetch failed:", exc)
+
+    if student_id is None:
+        guest_reactions = session.get("guest_photo_reactions") or {}
+        guest_reaction = guest_reactions.get(str(photo_id)) if isinstance(guest_reactions, dict) else None
+        if guest_reaction in ALLOWED_REACTIONS:
+            counts[guest_reaction] = counts.get(guest_reaction, 0) + 1
+            mine = guest_reaction
+
+    return {"reactions": counts, "my_reaction": mine}
 
 
 @app.route("/api/photos/reaction", methods=["POST"])
@@ -1958,7 +2237,7 @@ def api_photos_reaction() -> Any:
         guest_reactions[str(photo_id)] = reaction
         session["guest_photo_reactions"] = guest_reactions
         session.modified = True
-        return jsonify({"ok": True, "guest": True})
+        return jsonify({"ok": True, "guest": True, **_reaction_state(int(photo_id), None)})
 
     try:
         existing = (
@@ -1983,7 +2262,7 @@ def api_photos_reaction() -> Any:
         print("Reaction save failed:", exc)
         return jsonify({"error": "Reaksiyon kaydedilemedi."}), 500
 
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, **_reaction_state(int(photo_id), student["id"])})
 
 
 @app.route("/api/photos/<int:photo_id>", methods=["DELETE"])
@@ -2042,24 +2321,61 @@ def api_photos_feedback() -> Any:
     payload = request.get_json() or {}
     photo_id = payload.get("photo_id")
     feedback = (payload.get("feedback") or "").strip()
+    parent_id = payload.get("parent_id")
 
     if not photo_id or not feedback:
         return jsonify({"error": "Geçersiz istek."}), 400
 
+    if parent_id and not feedback_has_parent():
+        return jsonify({"error": "Yanıtlar için veritabanı güncellemesi bekleniyor."}), 400
+
+    if parent_id:
+        # One nesting level only: a reply's parent must itself be top level.
+        try:
+            parent_response = (
+                supabase.table("photo_feedbacks")
+                .select("id,photo_id,parent_id")
+                .eq("id", parent_id)
+                .limit(1)
+                .execute()
+            )
+            parent_rows = getattr(parent_response, "data", []) or []
+        except Exception as exc:
+            print("Parent feedback lookup failed:", exc)
+            return jsonify({"error": "Yanıt kaydedilemedi."}), 500
+        if not parent_rows:
+            return jsonify({"error": "Yanıtlanacak yorum bulunamadı."}), 400
+        parent = parent_rows[0]
+        if str(parent.get("photo_id")) != str(photo_id) or parent.get("parent_id"):
+            return jsonify({"error": "Geçersiz yanıt."}), 400
+    else:
+        parent_id = None
+
+    record = {
+        "photo_id": photo_id,
+        "student_id": student["id"],
+        "feedback": feedback,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    if feedback_has_parent():
+        record["parent_id"] = parent_id
+
     try:
-        supabase.table("photo_feedbacks").insert(
-            {
-                "photo_id": photo_id,
-                "student_id": student["id"],
-                "feedback": feedback,
-                "created_at": datetime.now(UTC).isoformat(),
-            }
-        ).execute()
+        response = supabase.table("photo_feedbacks").insert(record).execute()
+        rows = getattr(response, "data", []) or []
     except Exception as exc:
         print("Feedback save failed:", exc)
         return jsonify({"error": "Feedback kaydedilemedi."}), 500
 
-    return jsonify({"ok": True})
+    comment = dict(rows[0]) if rows else {
+        "photo_id": photo_id,
+        "student_id": student["id"],
+        "feedback": feedback,
+        "parent_id": parent_id,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    comment["student_name"] = student.get("name") or "Uzman"
+    return jsonify({"ok": True, "comment": comment})
 
 
 @app.route("/api/photos/monthly_winner", methods=["POST"])
@@ -2707,7 +3023,12 @@ def api_experts() -> Any:
     if not supabase:
         return jsonify([])
     try:
-        response = supabase.table("shining_brows_student_database").select("*").order("name", desc=False).execute()
+        response = (
+            supabase.table("shining_brows_student_database")
+            .select("id,name,expert_status,city,phone,avatar_url")
+            .order("name", desc=False)
+            .execute()
+        )
         students = getattr(response, "data", []) or []
     except Exception as exc:
         print("Experts fetch failed:", exc)
@@ -2716,7 +3037,6 @@ def api_experts() -> Any:
     results = []
     for student in students:
         student_copy = dict(student)
-        student_copy.pop("password", None)
         avatar_key = student_copy.get("avatar_url", "")
         if avatar_key:
             student_copy["avatar_path"] = avatar_key
@@ -2725,6 +3045,55 @@ def api_experts() -> Any:
                 student_copy["avatar_url"] = avatar_url
         results.append(student_copy)
     return jsonify(results)
+
+
+@app.route("/api/experts/<expert_id>", methods=["GET"])
+def api_expert_detail(expert_id: str) -> Any:
+    is_guest = bool(session.get("guest"))
+    viewer = get_current_student()
+    if not viewer and not is_guest:
+        return jsonify({"error": "Oturum bulunamadı"}), 401
+    if not supabase:
+        return jsonify({"error": "Supabase yapılandırması eksik."}), 500
+
+    try:
+        response = (
+            supabase.table("shining_brows_student_database")
+            .select("id,name,expert_status,city,phone,avatar_url,email")
+            .eq("id", expert_id)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(response, "data", []) or []
+    except Exception as exc:
+        print("Expert detail fetch failed:", exc)
+        return jsonify({"error": "Uzman bilgisi alınamadı."}), 500
+
+    if not rows:
+        return jsonify({"error": "Uzman bulunamadı."}), 404
+
+    expert = dict(rows[0])
+    if not (viewer and viewer.get("role") in ELEVATED_ROLES):
+        expert.pop("email", None)
+    avatar_key = expert.get("avatar_url") or ""
+    if avatar_key:
+        expert["avatar_url"] = build_image_url(avatar_key) or avatar_key
+
+    photos: List[Dict[str, Any]] = []
+    try:
+        photo_response = (
+            supabase.table("photos")
+            .select("id,student_id,image_url,feedback,is_monthly_winner,created_at")
+            .eq("student_id", expert_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        photos = enrich_photo_posts(getattr(photo_response, "data", []) or [], viewer, is_guest)
+    except Exception as exc:
+        print("Expert photos fetch failed:", exc)
+
+    expert["photos"] = photos
+    return jsonify(expert)
 
 
 @app.route("/api/faqs", methods=["POST", "GET"])
