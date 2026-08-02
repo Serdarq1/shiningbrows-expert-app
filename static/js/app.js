@@ -809,7 +809,6 @@ async function loadOrderProducts() {
       <div class="">
         <div class="flex items-center justify-between">
           <h4 class="font-semibold">${product.name}</h4>
-          ${priceText ? `<span class="text-xs font-semibold">${priceText}</span>` : ""}
         </div>
         <p class="text-[11px] text-zinc-500">${product.short_description || ""}</p>
         <button type="button" class="mt-2 px-5 py-2 rounded-full text-[11px] font-semibold text-white bg-zinc-800 hover:bg-zinc-700 transition rounded-md" data-action="add">
@@ -1079,7 +1078,7 @@ function setupOrderActions() {
     const message = items
       .map((item) => `${item.qty} adet ${item.product.name}`)
       .join(", ")
-      .concat(`. Toplam: ${formattedTotal} ₺. Siparişiniz onaylansın mı? Not: Sipariş onayından sonra size Whatsapp üzerinden Mail-order linki gönderilecektir.`);
+      .concat(`siparişiniz onaylansın mı? Not: Sipariş onayından sonra size Whatsapp üzerinden Mail-order linki gönderilecektir.`);
     openOrderConfirm(message);
   });
 }

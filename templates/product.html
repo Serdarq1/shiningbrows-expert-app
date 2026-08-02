@@ -37,11 +37,6 @@
             {% endif %}
           {% endif %}
         </div>
-        {% if product.price %}
-          <div class="inline-flex items-center gap-2 text-md font-semibold">
-            {{ product.price }} ₺
-          </div>
-        {% endif %}
         {% if product.usage == "professional" %}
           <div class="rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-sm text-amber-800">
             Profesyonel kullanım için özel: 3 ürün alımında 1 ürün hediye gönderilir.
@@ -55,7 +50,6 @@
            data-product-id="{{ product.id }}"
            data-product-name="{{ product.name }}"
            data-product-desc="{{ product.short_description or '' }}"
-           data-product-price="{{ product.price or '' }}"
            data-product-usage="{{ product.usage or '' }}"
            class="inline-flex items-center justify-center w-full py-3 rounded-lg bg-zinc-900 text-white font-semibold shadow-md">
           Sepete Ekle
@@ -91,9 +85,6 @@
               </div>
               <div class="">
                 <h4 class="text-sm font-semibold">{{ item.name }}</h4>
-                {% if item.price %}
-                  <span class="text-xs font-semibold text-black">{{ item.price }} ₺</span>
-                {% endif %}
               </div>
             </a>
           {% endfor %}
@@ -157,7 +148,6 @@
             id: addBtn.dataset.productId,
             name: addBtn.dataset.productName || "",
             short_description: addBtn.dataset.productDesc || "",
-            price: addBtn.dataset.productPrice || "",
             usage: addBtn.dataset.productUsage || ""
           };
           const items = readCart();
