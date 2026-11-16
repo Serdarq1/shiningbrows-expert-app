@@ -20,6 +20,7 @@ const FEED_REACTIONS = [
   { id: "wow", label: "🤩" },
   { id: "clap", label: "👏" },
 ];
+let studentReady = false;
 let quickTips = [];
 let currentUserRole = "student";
 let studentHasPassword = false;
@@ -60,18 +61,10 @@ document.addEventListener("DOMContentLoaded", () => {
   setupExpertProfileBack();
   setupPanelShortcuts();
   setupNotificationButton();
-  loadStudent();
-  loadProducts();
-  loadOrderProducts();
-  loadRules();
-  loadQuickTips();
-  loadEducation();
-  loadCampaigns();
-  loadBook();
-  loadFaqs();
-  loadPhotos();
-  loadVideos();
-  loadExperts();
+  loadStudent().then(() => {
+    loadSectionData(window.location.hash.slice(1) || "portal");
+    if (pendingAddProductId || pendingOpenCart) loadSectionData("urunler");
+  });
   setupSupportForm();
   setupPhotoForm();
   setupProfileForm();
@@ -83,7 +76,6 @@ document.addEventListener("DOMContentLoaded", () => {
   setupVideoForm();
   setupCampaignAdmin();
   setupOrderActions();
-  loadOrderHistory();
   setupWorkshopSignup();
   setupLiveWorkshopUI();
 });
@@ -333,6 +325,7 @@ function switchSection(targetId) {
     el.classList.toggle("md:hidden", !isTarget);
   });
   setFeedView("main");
+  loadSectionData(targetId);
 }
 
 function setupFeedControls() {
@@ -365,7 +358,44 @@ function setupFeedControls() {
   updateStates();
 }
 
-async function fetchJSON(url, options = {}) {
+const pendingReads = new Map();
+function fetchJSON(url, options = {}) {
+  if (Object.keys(options).length) return requestJSON(url, options);
+  if (!pendingReads.has(url)) {
+    pendingReads.set(url, requestJSON(url).finally(() => pendingReads.delete(url)));
+  }
+  return pendingReads.get(url);
+}
+
+const sectionLoads = new Map();
+function loadSectionData(section) {
+  if (!studentReady) return;
+  const loaders = {
+    "portal": [],
+    "hizli-bilgiler": [loadRules, loadQuickTips, loadEducation],
+    "profil": [loadPhotos],
+    "urun-bilgileri": [loadProducts],
+    "urunler": [loadOrderProducts, loadOrderHistory],
+    "uzman-akisi": [loadFeed, loadPhotos],
+    "kampanyalar": [loadCampaigns],
+    "yaklasan-workshoplar": [loadWorkshop],
+    "canli-workshop": [loadWorkshop],
+    "uzmanlar": [loadExperts],
+    "medya": [loadBook, loadVideos],
+    "destek": [loadFaqs],
+    "shining-world": [],
+  };
+  for (const loader of loaders[section] || []) {
+    if (sectionLoads.has(loader)) continue;
+    sectionLoads.set(loader, true);
+    loader().catch(() => {
+      sectionLoads.delete(loader);
+      showToast("Bilgiler yüklenemedi. Lütfen tekrar deneyin.", { type: "error" });
+    });
+  }
+}
+
+async function requestJSON(url, options = {}) {
   const opts = { ...options };
   const method = (opts.method || "GET").toUpperCase();
   if (method === "GET" && !opts.cache) {
@@ -377,10 +407,10 @@ async function fetchJSON(url, options = {}) {
     if (contentType.includes("application/json")) {
       const data = await response.json();
       const message = data.error || data.message || "İstek başarısız";
-      throw new Error(message);
+      throw Object.assign(new Error(message), { status: response.status });
     }
     const text = await response.text();
-    throw new Error(text || "İstek başarısız");
+    throw Object.assign(new Error(text || "İstek başarısız"), { status: response.status });
   }
   return response.json();
 }
@@ -596,10 +626,11 @@ async function loadStudent() {
   try {
     const student = await fetchJSON("/api/student");
     document.getElementById("student-name").textContent = toTitleCase(student.name);
-    document.getElementById("expert-id").textContent = `Uzman ID: ${student.id}`;
+    document.getElementById("expert-id").textContent = `${window.SBLocale?.language === "en" ? "Expert ID" : "Uzman ID"}: ${student.id}`;
     document.getElementById("workshop-name").textContent = student.workshop_name || "-";
     document.getElementById("certificate-date").textContent = student.date || "-";
     document.getElementById("certificate-status").textContent = student.status || "Aktif";
+    studentReady = true;
     currentUserRole = student.role || "student";
     isGuestUser = currentUserRole === "guest";
     currentUserName = student.name || "";
@@ -630,7 +661,7 @@ async function loadStudent() {
     }
     const sidebarId = document.getElementById("sidebar-expert-id");
     if (sidebarId) {
-      sidebarId.textContent = `Uzman ID: ${student.id}`;
+      sidebarId.textContent = `${window.SBLocale?.language === "en" ? "Expert ID" : "Uzman ID"}: ${student.id}`;
     }
     const sidebarDate = document.getElementById("sidebar-certificate-date");
     if (sidebarDate) {
@@ -662,13 +693,13 @@ async function loadStudent() {
     refreshPasswordUI();
     refreshWorkshopAdminVisibility();
     applyRoleVisibility(currentUserRole);
-    loadWorkshop();
-    loadExperts();
-    loadFeed();
+
   } catch (err) {
     console.error(err);
-    if (!isGuestUser) {
+    if (err.status === 401) {
       window.location.href = "/login";
+    } else {
+      showToast("Bilgiler yüklenemedi. Lütfen tekrar deneyin.", { type: "error" });
     }
   }
 }
@@ -754,7 +785,7 @@ async function loadProducts() {
     card.innerHTML = `
       <div class="product-img cursor-pointer">
         <button class="flex items-center justify-center w-full" type="button">
-          <img class="border border-zinc-200 rounded-xl" src="./static/img/product-images/${product.name}.svg" width="150" alt="${product.name}" />
+          <img loading="lazy" decoding="async" class="border border-zinc-200 rounded-xl" src="./static/img/product-images/${encodeURIComponent(product.name)}.webp" width="150" alt="${product.name}" />
         </button>
         <div class="flex items-center justify-between">
           <h4 class="font-semibold">${product.name}</h4>
@@ -799,16 +830,18 @@ async function loadOrderProducts() {
   container.innerHTML = "";
   const products = await fetchJSON("/api/products");
   products.forEach((product) => {
-    const priceText = formatPrice(product.price);
+    if (orderCart[product.id]) orderCart[product.id].product = product;
+    const priceText = window.SBLocale?.language === "tr" ? formatPrice(product.price) : "";
     const card = document.createElement("div");
     card.className = "rounded-lg border border-gray-200 bg-white p-3 space-y-2 cursor-pointer";
     card.innerHTML = `
       <div class="flex items-center justify-center">
-        <img class="rounded-lg" src="./static/img/product-images/${product.name}.svg" width="200" alt="${product.name}" />
+        <img loading="lazy" decoding="async" class="rounded-lg" src="./static/img/product-images/${encodeURIComponent(product.name)}.webp" width="200" alt="${product.name}" />
       </div>
       <div class="">
         <div class="flex items-center justify-between">
           <h4 class="font-semibold">${product.name}</h4>
+          ${priceText ? `<span class="text-xs font-semibold">${priceText}</span>` : ""}
         </div>
         <p class="text-[11px] text-zinc-500">${product.short_description || ""}</p>
         <button type="button" class="mt-2 px-5 py-2 rounded-full text-[11px] font-semibold text-white bg-zinc-800 hover:bg-zinc-700 transition rounded-md" data-action="add">
@@ -828,6 +861,7 @@ async function loadOrderProducts() {
     });
     container.appendChild(card);
   });
+  renderCart();
   if (pendingAddProductId) {
     const match = products.find((product) => String(product.id) === String(pendingAddProductId));
     if (match) {
@@ -854,6 +888,7 @@ function addToCart(product) {
   renderCart();
   openCartPanel();
   saveCart();
+  showToast(window.SBLocale?.language === "en" ? "Added to cart" : "Sepete eklendi", { type: "success" });
 }
 
 function updateCartQty(productId, delta) {
@@ -879,11 +914,12 @@ function renderCart() {
     if (Number.isNaN(price)) return sum;
     return sum + price * item.qty;
   }, 0);
-  count.textContent = `${totalQty} ürün`;
+  count.textContent = window.SBLocale?.language === "en" ? `${totalQty} items` : `${totalQty} ürün`;
   const totalEl = document.getElementById("order-total-amount");
   const bonusEl = document.getElementById("order-bonus-info");
   const badgeEl = document.getElementById("order-cart-badge");
   if (totalEl) {
+    totalEl.hidden = window.SBLocale?.language !== "tr";
     totalEl.textContent = totalAmount ? formatPrice(totalAmount) : "0 ₺";
   }
   if (badgeEl) {
@@ -913,13 +949,13 @@ function renderCart() {
     return;
   }
   items.forEach((item) => {
-    const priceText = formatPrice(item.product.price);
+    const priceText = window.SBLocale?.language === "tr" ? formatPrice(item.product.price) : "";
     const row = document.createElement("div");
     row.className = "flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm";
     row.innerHTML = `
       <div class="flex items-center gap-3">
         <div class="h-10 w-10 rounded-md bg-white flex items-center justify-center overflow-hidden">
-          <img src="./static/img/product-images/${item.product.name}.svg" alt="${item.product.name}" class="h-full w-full object-contain">
+          <img src="./static/img/product-images/${encodeURIComponent(item.product.name)}.webp" alt="${item.product.name}" class="h-full w-full object-contain">
         </div>
         <div>
           <p class="font-semibold">${item.product.name}</p>
@@ -1075,10 +1111,11 @@ function setupOrderActions() {
     const formattedTotal = Number.isFinite(totalAmount)
       ? totalAmount.toLocaleString("tr-TR")
       : "0";
+    const english = window.SBLocale?.language === "en";
     const message = items
-      .map((item) => `${item.qty} adet ${item.product.name}`)
+      .map((item) => english ? `${item.qty} × ${item.product.name}` : `${item.qty} adet ${item.product.name}`)
       .join(", ")
-      .concat(`siparişiniz onaylansın mı? Not: Sipariş onayından sonra size Whatsapp üzerinden Mail-order linki gönderilecektir.`);
+      .concat(english ? " — Confirm this order? A payment link will be sent to you via WhatsApp after confirmation." : " siparişiniz onaylansın mı? Not: Sipariş onayından sonra size Whatsapp üzerinden Mail-order linki gönderilecektir.");
     openOrderConfirm(message);
   });
 }
@@ -2829,7 +2866,7 @@ async function setupClerkAccount() {
     },
   };
   const loadOptions = { appearance };
-  if (window.trTR) {
+  if (window.SBLocale?.language === "tr" && window.trTR) {
     loadOptions.localization = window.trTR;
   }
   try {
@@ -2938,12 +2975,12 @@ async function loadOrderHistory(page = 1) {
         row.className = "p-3 rounded-lg border border-gray-200 bg-white text-sm space-y-1";
         row.innerHTML = `
           <div class="flex items-center justify-between">
-            <p class="font-semibold">Sipariş${orderNumber ? ` #${escapeHTML(orderNumber)}` : ""}</p>
+            <p class="font-semibold">${window.SBLocale?.language === "en" ? "Order" : "Sipariş"}${orderNumber ? ` #${escapeHTML(orderNumber)}` : ""}</p>
             <span class="text-xs text-zinc-500">${dateLabel}</span>
           </div>
           ${isAdminView && customerDetails ? `<div class="text-xs text-zinc-500">${escapeHTML(customerDetails)}</div>` : ""}
           <p class="text-zinc-700">${escapeHTML(item.order_text || "-")}</p>
-          <div class="text-xs text-zinc-500">Toplam adet: ${escapeHTML(item.total_qty ?? "-")}</div>
+          <div class="text-xs text-zinc-500">${window.SBLocale?.language === "en" ? "Total quantity:" : "Toplam adet:"} ${escapeHTML(item.total_qty ?? "-")}</div>
         `;
         list.appendChild(row);
       });

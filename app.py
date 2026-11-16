@@ -6,7 +6,10 @@ import time
 import uuid
 import bcrypt
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from functools import lru_cache
+from collections import OrderedDict
+from threading import Lock
 from tempfile import NamedTemporaryFile
 import ssl
 import re
@@ -80,6 +83,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=False)
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
@@ -128,11 +132,13 @@ else:
 
 # ---------- Helpers ----------
 
-def fetch_table(table: str, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+def fetch_table(table: str, filters: Optional[Dict[str, Any]] = None, *, strict: bool = False) -> List[Dict[str, Any]]:
     """
     Fetch data from Supabase
     """
     if not supabase:
+        if strict:
+            raise RuntimeError("Student service unavailable")
         return []
 
     try:
@@ -144,9 +150,15 @@ def fetch_table(table: str, filters: Optional[Dict[str, Any]] = None) -> List[Di
         if hasattr(response, "data"):
             return response.data or []
     except Exception as exc:
+        if strict:
+            raise
         print(f"Supabase fetch exception for {table}: {exc}")
 
     return []
+
+
+_storage_urls = OrderedDict()
+_storage_urls_lock = Lock()
 
 
 def build_storage_url(path: str, bucket: str) -> Optional[str]:
@@ -158,6 +170,12 @@ def build_storage_url(path: str, bucket: str) -> Optional[str]:
     if not supabase:
         return None
     signed_error: Optional[Exception] = None
+    cache_key = (bucket, path)
+    with _storage_urls_lock:
+        cached = _storage_urls.get(cache_key)
+        if cached and cached[0] > time.monotonic():
+            _storage_urls.move_to_end(cache_key)
+            return cached[1]
     try:
         resp = supabase.storage.from_(bucket).create_signed_url(path, 60 * 60 * 24 * 7)
         if isinstance(resp, dict):
@@ -176,6 +194,11 @@ def build_storage_url(path: str, bucket: str) -> Optional[str]:
                 or (data.get("signed_url") if isinstance(data, dict) else None)
             )
         if url:
+            with _storage_urls_lock:
+                _storage_urls[cache_key] = (time.monotonic() + 3600, url)
+                _storage_urls.move_to_end(cache_key)
+                while len(_storage_urls) > 512:
+                    _storage_urls.popitem(last=False)
             return url
     except Exception as exc:
         signed_error = exc
@@ -320,6 +343,7 @@ def _normalize_name(name: str) -> str:
     return " ".join((name or "").strip().lower().split())
 
 
+@lru_cache(maxsize=1)
 def _get_clerk_jwks_client() -> Optional[PyJWKClient]:
     if not CLERK_ISSUER:
         return None
@@ -588,14 +612,14 @@ def fetch_student_by_name(full_name: str) -> Optional[Dict[str, Any]]:
             return student
     return None
 
-def get_current_student() -> Optional[Dict[str, Any]]:
+def get_current_student(*, strict: bool = False) -> Optional[Dict[str, Any]]:
     """
     Get currently logged-in student using numeric id stored in session.
     """
     student_id = session.get("student_id")
     if not student_id:
         return None
-    results = fetch_table("shining_brows_student_database", {"id": student_id})
+    results = fetch_table("shining_brows_student_database", {"id": student_id}, strict=strict)
     return results[0] if results else None
 
 
@@ -603,11 +627,13 @@ def get_current_student() -> Optional[Dict[str, Any]]:
 
 @app.route("/")
 def index() -> Any:
-    return redirect(url_for("login"))
+    return redirect(url_for("dashboard" if session.get("student_id") or session.get("guest") else "login"))
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login() -> Any:
+    if request.method == "GET" and session.get("student_id"):
+        return redirect(url_for("dashboard"))
     error = None
 
     if request.method == "POST":
@@ -658,14 +684,18 @@ def clerk_authorize() -> Any:
     user_id = decoded.get("sub") or ""
     clerk_user = _fetch_clerk_user(user_id)
     if not clerk_user:
-        return jsonify({"error": "user_not_found"}), 401
+        return jsonify({"error": "identity_service_unavailable"}), 503
     info = _clerk_user_email_and_name(clerk_user)
     email = info.get("email") or ""
     full_name = info.get("full_name") or ""
     if not email or not full_name:
         return jsonify({"error": "missing_identity"}), 400
-    students = fetch_table("shining_brows_student_database", {"email": email})
+    try:
+        students = fetch_table("shining_brows_student_database", {"email": email}, strict=True)
+    except Exception:
+        return jsonify({"error": "student_service_unavailable"}), 503
     matched = students[0] if students else None
+    session.permanent = True
     if not matched:
         session.pop("student_id", None)
         session["guest"] = True
@@ -730,8 +760,12 @@ def api_student() -> Any:
                 "expert_status": "",
             }
         )
-    student = get_current_student()
+    try:
+        student = get_current_student(strict=True)
+    except Exception:
+        return jsonify({"error": "student_service_unavailable"}), 503
     if not student:
+        session.clear()
         return jsonify({"error": "Oturum bulunamadı"}), 401
     student_copy = dict(student)
     has_password = bool(student_copy.pop("password", None))
@@ -3237,7 +3271,7 @@ def product_detail(product_id: str) -> Any:
             product=product,
             steps=steps,
             related=related,
-            image_filename=f"img/product-images/{product.get('name','')}.svg",
+            image_filename=f"img/product-images/{product.get('name','')}.webp",
         )
     except Exception as exc:
         print("Product detail fetch failed:", exc)

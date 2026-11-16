@@ -71,6 +71,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPageFinished(view: WebView, url: String) {
+                CookieManager.getInstance().flush()
                 progressBar.visibility = View.GONE
                 dismissSplashOverlay()
             }
@@ -140,7 +141,7 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState)
         } else {
-            webView.loadUrl("https://experts.shiningbrowsacademy.com/login")
+            webView.loadUrl("https://experts.shiningbrowsacademy.com/dashboard")
         }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -161,6 +162,11 @@ class MainActivity : AppCompatActivity() {
         val fadeOut = AlphaAnimation(1f, 0f).apply { duration = 250 }
         splashOverlay.startAnimation(fadeOut)
         splashOverlay.visibility = View.GONE
+    }
+
+    override fun onStop() {
+        CookieManager.getInstance().flush()
+        super.onStop()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

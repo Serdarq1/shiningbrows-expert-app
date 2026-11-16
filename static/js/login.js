@@ -17,8 +17,15 @@ function clerkErrorMessage(err) {
 }
 
 window.addEventListener("load", async () => {
-  if (typeof Clerk === "undefined") return;
-  await Clerk.load();
+  try {
+    if (typeof Clerk === "undefined") throw new Error("Clerk unavailable");
+    await Clerk.load(window.SBLocale?.language === "tr" && window.trTR ? { localization: window.trTR } : {});
+  } catch (err) {
+    const errorBox = document.getElementById("error-message");
+    errorBox.textContent = window.SBLocale?.language === "en" ? "Sign in could not load. Check your connection and reload." : "Giriş yüklenemedi. Bağlantınızı kontrol edip sayfayı yenileyin.";
+    errorBox.classList.remove("hidden");
+    return;
+  }
 
   const form = document.getElementById("sign-in-form");
   const signInFields = document.getElementById("sign-in-fields");
@@ -45,8 +52,8 @@ window.addEventListener("load", async () => {
   updateSubmitState();
 
   const finishAuth = async (sessionId) => {
-    await Clerk.setActive({ session: sessionId });
-    const token = await Clerk.session.getToken();
+    if (sessionId) await Clerk.setActive({ session: sessionId });
+    const token = await Clerk.session.getToken({ skipCache: true });
     const res = await fetch("/api/clerk/authorize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -56,11 +63,11 @@ window.addEventListener("load", async () => {
       window.location.href = "/dashboard";
       return true;
     }
-    return false;
+    throw new Error("authorization_unavailable");
   };
 
   const showMessage = (message, isInfo = false) => {
-    errorBox.textContent = message;
+    errorBox.textContent = window.SBLocale?.t(message) || message;
     errorBox.classList.remove("hidden", "text-red-600", "text-zinc-700");
     errorBox.classList.add(isInfo ? "text-zinc-700" : "text-red-600");
   };
@@ -70,6 +77,21 @@ window.addEventListener("load", async () => {
   const clearError = () => {
     errorBox.classList.add("hidden");
     errorBox.textContent = "";
+  };
+
+  const showVerification = () => {
+    form.classList.add("hidden");
+    let verification = document.getElementById("clerk-verification");
+    if (!verification) {
+      verification = document.createElement("div");
+      verification.id = "clerk-verification";
+      form.after(verification);
+    }
+    Clerk.mountSignIn(verification, {
+      routing: "hash",
+      forceRedirectUrl: "/login",
+      signUpUrl: "/sign-up",
+    });
   };
 
   const startPasswordReset = async (email) => {
@@ -133,7 +155,7 @@ window.addEventListener("load", async () => {
         if (signInAttempt.status === "complete") {
           await finishAuth(signInAttempt.createdSessionId);
         } else {
-          showError("Beklenmeyen bir adım gerekiyor. Lütfen destek ile iletişime geçin.");
+          showVerification();
         }
       } else if (form.dataset.step === "reset-request") {
         const email = document.getElementById("reset-email").value.trim();
@@ -149,10 +171,11 @@ window.addEventListener("load", async () => {
         if (attempt.status === "complete") {
           await finishAuth(attempt.createdSessionId);
         } else {
-          showError("Beklenmeyen bir adım gerekiyor. Lütfen destek ile iletişime geçin.");
+          showVerification();
         }
       }
     } catch (err) {
+      form.classList.remove("hidden");
       const code = err && err.errors && err.errors[0] && err.errors[0].code;
       if (form.dataset.step === "sign-in" && code === "strategy_for_user_invalid") {
         const email = document.getElementById("email").value.trim();
@@ -174,7 +197,7 @@ window.addEventListener("load", async () => {
 
   if (Clerk.isSignedIn) {
     try {
-      const token = await Clerk.session.getToken();
+      const token = await Clerk.session.getToken({ skipCache: true });
       const res = await fetch("/api/clerk/authorize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -187,6 +210,8 @@ window.addEventListener("load", async () => {
     } catch (err) {
       console.error(err);
     }
-    await Clerk.signOut();
+    showError(window.SBLocale?.language === "en"
+      ? "We could not restore your session. Please check your connection and reload. You have not been signed out."
+      : "Oturumunuz yüklenemedi. Bağlantınızı kontrol edip sayfayı yenileyin. Oturumunuz kapatılmadı.");
   }
 });
